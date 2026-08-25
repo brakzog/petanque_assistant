@@ -1,4 +1,4 @@
-package com.jro.boules.tournoi_de_petanque
+package com.jro.boules.tournoidepetanque
 
 import io.flutter.embedding.android.FlutterActivity
 
