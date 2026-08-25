@@ -8,7 +8,7 @@
 PRODUCT_NAME = tournoi_de_petanque
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.jro.boules.tournoiDePetanque
+PRODUCT_BUNDLE_IDENTIFIER = com.jro.boules.tournoidepetanque
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.jro.boules. All rights reserved.
