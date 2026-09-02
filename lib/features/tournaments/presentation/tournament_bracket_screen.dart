@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../domain/match.dart';
+import '../../../domain/repechage_playoff.dart';
 import '../../../domain/team.dart';
 import '../../../domain/tournament.dart';
+import '../../../domain/tournament_progression_result.dart';
 import '../data/bracket_generator.dart';
 import '../data/match_repository.dart';
-import '../data/team_repository.dart';
-import 'match_live_screen.dart';
-import '../data/tournament_progression_service.dart';
-import '../../../domain/tournament_progression_result.dart';
 import '../data/repechage_playoff_repository.dart';
-import '../../../domain/repechage_playoff.dart';
+import '../data/team_repository.dart';
+import '../data/tournament_progression_service.dart';
+import 'match_live_screen.dart';
 import 'repechage_playoff_screen.dart';
 
 class TournamentBracketScreen extends StatefulWidget {
@@ -52,9 +52,11 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
     _database = AppDatabase();
     _teamRepository = TeamRepository(_database);
     _matchRepository = MatchRepository(_database);
+
     _playoffRepository = RepechagePlayoffRepository(
       _database,
     );
+
     _progressionService = TournamentProgressionService(
       matchRepository: _matchRepository,
       playoffRepository: _playoffRepository,
@@ -64,50 +66,71 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
   }
 
   Future<void> _loadTournament() async {
-    final teams = await _teamRepository.getTeamsForTournament(
-      widget.tournament.id,
-    );
-
-    var matches = await _matchRepository.getMatchesForTournament(
-      widget.tournament.id,
-    );
-
-    TournamentProgressionResult? progressionResult;
-
-    if (matches.isEmpty) {
-      matches = _bracketGenerator.generateFirstRound(
-        tournament: widget.tournament,
-        teams: teams,
-      );
-
-      await _matchRepository.saveMatches(matches);
-    } else {
-      progressionResult =
-      await _progressionService.progressIfPossible(
-        widget.tournament,
-      );
-
-      matches = await _matchRepository.getMatchesForTournament(
+    try {
+      final teams = await _teamRepository.getTeamsForTournament(
         widget.tournament.id,
       );
+
+      var matches = await _matchRepository.getMatchesForTournament(
+        widget.tournament.id,
+      );
+
+      TournamentProgressionResult? progressionResult;
+
+      if (matches.isEmpty) {
+        matches = _bracketGenerator.generateFirstRound(
+          tournament: widget.tournament,
+          teams: teams,
+        );
+
+        await _matchRepository.saveMatches(matches);
+      } else {
+        progressionResult =
+        await _progressionService.progressIfPossible(
+          widget.tournament,
+        );
+
+        matches = await _matchRepository.getMatchesForTournament(
+          widget.tournament.id,
+        );
+      }
+
+      final playoff =
+      await _playoffRepository.getForTournament(
+        widget.tournament.id,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _teams = teams;
+        _matches = matches;
+        _playoff = playoff;
+        _progressionResult = progressionResult;
+        _loading = false;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('ERREUR CHARGEMENT TOURNOI: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erreur lors du chargement du tournoi : $error',
+          ),
+        ),
+      );
     }
-
-    final playoff =
-    await _playoffRepository.getForTournament(
-      widget.tournament.id,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _teams = teams;
-      _matches = matches;
-      _playoff = playoff;
-      _progressionResult = progressionResult;
-      _loading = false;
-    });
   }
 
   Team? _findTeam(String? teamId) {
@@ -140,6 +163,72 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
         .join(' + ');
   }
 
+  bool get _isTournamentFinished {
+    if (_progressionResult?.state ==
+        TournamentProgressionState.finished) {
+      return true;
+    }
+
+    final tournamentMatches = _matches
+        .where(
+          (match) => match.type == MatchType.tournament,
+    )
+        .toList();
+
+    if (tournamentMatches.isEmpty) {
+      return false;
+    }
+
+    final lastRound = tournamentMatches
+        .map((match) => match.round)
+        .reduce((a, b) => a > b ? a : b);
+
+    final lastRoundMatches = tournamentMatches
+        .where((match) => match.round == lastRound)
+        .toList();
+
+    return lastRoundMatches.length == 1 &&
+        lastRoundMatches.first.status == MatchStatus.finished &&
+        lastRoundMatches.first.winnerTeamId != null;
+  }
+
+  Match? get _finalMatch {
+    final tournamentMatches = _matches
+        .where(
+          (match) => match.type == MatchType.tournament,
+    )
+        .toList();
+
+    if (tournamentMatches.isEmpty) {
+      return null;
+    }
+
+    final lastRound = tournamentMatches
+        .map((match) => match.round)
+        .reduce((a, b) => a > b ? a : b);
+
+    final lastRoundMatches = tournamentMatches
+        .where((match) => match.round == lastRound)
+        .toList()
+      ..sort(
+            (a, b) => a.position.compareTo(b.position),
+      );
+
+    if (lastRoundMatches.length != 1) {
+      return null;
+    }
+
+    return lastRoundMatches.first;
+  }
+
+  Team? get _winnerTeam {
+    if (!_isTournamentFinished) {
+      return null;
+    }
+
+    return _findTeam(_finalMatch?.winnerTeamId);
+  }
+
   @override
   void dispose() {
     _database.close();
@@ -162,6 +251,9 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
 
   Widget _buildContent(BuildContext context) {
     final rounds = _matches
+        .where(
+          (match) => match.type == MatchType.tournament,
+    )
         .map((match) => match.round)
         .toSet()
         .toList()
@@ -170,22 +262,25 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Tournoi en cours',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-
-        const SizedBox(height: 4),
-
-        Text(
-          '${_teams.length} équipes • '
-              '${widget.tournament.rules.targetScore} points',
-        ),
+        if (_isTournamentFinished)
+          _buildTournamentFinishedCard(context)
+        else ...[
+          Text(
+            'Tournoi en cours',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${_teams.length} équipes • '
+                '${widget.tournament.rules.targetScore} points',
+          ),
+        ],
 
         const SizedBox(height: 24),
 
-        if (_progressionResult?.state ==
-            TournamentProgressionState.playoffRequired) ...[
+        if (!_isTournamentFinished &&
+            _progressionResult?.state ==
+                TournamentProgressionState.playoffRequired) ...[
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -255,7 +350,11 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
           const SizedBox(height: 12),
 
           ...(_matches
-              .where((match) => match.round == round)
+              .where(
+                (match) =>
+            match.round == round &&
+                match.type == MatchType.tournament,
+          )
               .toList()
             ..sort(
                   (a, b) => a.position.compareTo(b.position),
@@ -269,7 +368,9 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
               teamBLabel: _teamLabel(match.teamBId),
               teamAPlayers: _playersLabel(match.teamAId),
               teamBPlayers: _playersLabel(match.teamBId),
-              onTap: () async {
+              onTap: _isTournamentFinished
+                  ? null
+                  : () async {
                 final teamA = _findTeam(match.teamAId);
                 final teamB = _findTeam(match.teamBId);
 
@@ -298,6 +399,112 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
           const SizedBox(height: 24),
         ],
       ],
+    );
+  }
+
+  Widget _buildTournamentFinishedCard(BuildContext context) {
+    final winner = _winnerTeam;
+    final finalMatch = _finalMatch;
+
+    if (winner == null || finalMatch == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tournoi terminé',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Le tournoi est terminé.',
+          ),
+        ],
+      );
+    }
+
+    final winnerPlayers = _playersLabel(winner.id);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.emoji_events,
+              size: 56,
+            ),
+
+            const SizedBox(height: 12),
+
+            Text(
+              'TOURNOI TERMINÉ',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              winner.name,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 4),
+
+            Text(
+              'VAINQUEUR',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+
+            if (winnerPlayers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                winnerPlayers,
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+
+            const SizedBox(height: 20),
+
+            const Divider(),
+
+            const SizedBox(height: 12),
+
+            Text(
+              'Finale',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              '${_teamLabel(finalMatch.teamAId)}  '
+                  '${finalMatch.teamAScore} - ${finalMatch.teamBScore}  '
+                  '${_teamLabel(finalMatch.teamBId)}',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 12),
+
+            Text(
+              '${_teams.length} équipes • '
+                  '${widget.tournament.rules.targetScore} points',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -382,7 +589,6 @@ class _MatchCard extends StatelessWidget {
                       players: teamAPlayers,
                     ),
                   ),
-
                   Text(
                     '${match.teamAScore}',
                     style: Theme.of(context)
@@ -405,7 +611,6 @@ class _MatchCard extends StatelessWidget {
                       players: teamBPlayers,
                     ),
                   ),
-
                   Text(
                     '${match.teamBScore}',
                     style: Theme.of(context)
@@ -420,7 +625,9 @@ class _MatchCard extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  'En ${match.targetScore} points',
+                  match.status == MatchStatus.finished
+                      ? 'Match terminé'
+                      : 'En ${match.targetScore} points',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
