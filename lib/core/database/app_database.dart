@@ -16,8 +16,10 @@ class Tournaments extends Table {
   TextColumn get format => text()();
   TextColumn get teamCreationMode => text()();
   IntColumn get targetScore => integer().withDefault(const Constant(13))();
+
   BoolColumn get allowFirstRoundRepechage =>
       boolean().withDefault(const Constant(false))();
+
   IntColumn get firstRoundRepechageSlots =>
       integer().withDefault(const Constant(0))();
 
@@ -33,10 +35,10 @@ class Players extends Table {
   TextColumn get id => text()();
 
   TextColumn get tournamentId => text().references(
-    Tournaments,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Tournaments,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   TextColumn get name => text()();
 
@@ -49,10 +51,10 @@ class PetanqueBalls extends Table {
   TextColumn get id => text()();
 
   TextColumn get playerId => text().references(
-    Players,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Players,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   TextColumn get brand => text().nullable()();
   TextColumn get model => text().nullable()();
@@ -63,15 +65,36 @@ class PetanqueBalls extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// Photos de référence utilisées plus tard pour identifier
+/// visuellement les boules d'un joueur.
+@DataClassName('PetanqueBallPhotoRow')
+class PetanqueBallPhotos extends Table {
+  TextColumn get id => text()();
+
+  TextColumn get petanqueBallId => text().references(
+        PetanqueBalls,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
+
+  /// Chemin du fichier dans le stockage privé de l'application.
+  TextColumn get path => text()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DataClassName('TeamRow')
 class Teams extends Table {
   TextColumn get id => text()();
 
   TextColumn get tournamentId => text().references(
-    Tournaments,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Tournaments,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   TextColumn get name => text()();
 
@@ -82,22 +105,22 @@ class Teams extends Table {
 @DataClassName('TeamPlayerRow')
 class TeamPlayers extends Table {
   TextColumn get teamId => text().references(
-    Teams,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Teams,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   TextColumn get playerId => text().references(
-    Players,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Players,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   @override
   Set<Column<Object>> get primaryKey => {
-    teamId,
-    playerId,
-  };
+        teamId,
+        playerId,
+      };
 }
 
 @DataClassName('MatchRow')
@@ -105,26 +128,25 @@ class Matches extends Table {
   TextColumn get id => text()();
 
   TextColumn get tournamentId => text().references(
-    Tournaments,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Tournaments,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   IntColumn get round => integer()();
-
   IntColumn get position => integer()();
 
   TextColumn get teamAId => text().nullable().references(
-    Teams,
-    #id,
-    onDelete: KeyAction.setNull,
-  )();
+        Teams,
+        #id,
+        onDelete: KeyAction.setNull,
+      )();
 
   TextColumn get teamBId => text().nullable().references(
-    Teams,
-    #id,
-    onDelete: KeyAction.setNull,
-  )();
+        Teams,
+        #id,
+        onDelete: KeyAction.setNull,
+      )();
 
   IntColumn get targetScore => integer()();
 
@@ -137,41 +159,38 @@ class Matches extends Table {
   TextColumn get status =>
       text().withDefault(const Constant('pending'))();
 
-  TextColumn get winnerTeamId =>
-      text().nullable().references(
+  TextColumn get winnerTeamId => text().nullable().references(
         Teams,
         #id,
         onDelete: KeyAction.setNull,
       )();
 
-  @override
-  Set<Column<Object>> get primaryKey => {id};
-
   TextColumn get type =>
       text().withDefault(const Constant('tournament'))();
-}
 
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
 
 @DataClassName('EndRow')
 class Ends extends Table {
   TextColumn get id => text()();
 
   TextColumn get matchId => text().references(
-    Matches,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Matches,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   IntColumn get number => integer()();
 
   TextColumn get scoringTeamId => text().references(
-    Teams,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Teams,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
   IntColumn get points => integer()();
-
   DateTimeColumn get createdAt => dateTime()();
 
   @override
@@ -183,17 +202,15 @@ class RepechagePlayoffs extends Table {
   TextColumn get id => text()();
 
   TextColumn get tournamentId => text().references(
-    Tournaments,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+        Tournaments,
+        #id,
+        onDelete: KeyAction.cascade,
+      )();
 
-  /// IDs séparés par des virgules.
   TextColumn get teamIds => text()();
 
   IntColumn get qualificationSlots => integer()();
 
-  /// Vide tant que le barrage n'est pas résolu.
   TextColumn get qualifiedTeamIds =>
       text().withDefault(const Constant(''))();
 
@@ -209,6 +226,7 @@ class RepechagePlayoffs extends Table {
     Tournaments,
     Players,
     PetanqueBalls,
+    PetanqueBallPhotos,
     Teams,
     TeamPlayers,
     Matches,
@@ -216,12 +234,11 @@ class RepechagePlayoffs extends Table {
     RepechagePlayoffs,
   ],
 )
-
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -239,12 +256,15 @@ class AppDatabase extends _$AppDatabase {
           await migrator.createTable(teams);
           await migrator.createTable(teamPlayers);
         }
+
         if (from < 4) {
           await migrator.createTable(matches);
         }
+
         if (from < 5) {
           await migrator.createTable(ends);
         }
+
         if (from < 6) {
           await migrator.addColumn(
             tournaments,
@@ -263,9 +283,14 @@ class AppDatabase extends _$AppDatabase {
           await migrator.createTable(repechagePlayoffs);
         }
 
+        if (from < 9) {
+          await migrator.createTable(petanqueBallPhotos);
+        }
       },
       beforeOpen: (details) async {
-        await customStatement('PRAGMA foreign_keys = ON');
+        await customStatement(
+          'PRAGMA foreign_keys = ON',
+        );
       },
     );
   }
@@ -273,7 +298,8 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory =
+        await getApplicationDocumentsDirectory();
 
     final file = File(
       p.join(
