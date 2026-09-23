@@ -9,6 +9,8 @@ import '../data/end_repository.dart';
 import '../data/match_repository.dart';
 import '../../../domain/tournament.dart';
 
+import 'terrain_analysis_screen.dart';
+
 class MatchLiveScreen extends StatefulWidget {
   final Match match;
   final Team teamA;
@@ -257,13 +259,28 @@ class _MatchLiveScreenState extends State<MatchLiveScreen> {
             )
           else ...[
             Text(
-              'Mène ${_ends.length + 1}',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+  'Mène ${_ends.length + 1}',
+  style: Theme.of(context).textTheme.titleLarge,
+),
 
-            const SizedBox(height: 16),
+const SizedBox(height: 16),
 
-            _ScoreButtons(
+FilledButton.icon(
+  onPressed: () {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            const TerrainAnalysisScreen(),
+      ),
+    );
+  },
+  icon: const Icon(Icons.camera_alt),
+  label: const Text('Analyser le terrain'),
+),
+
+const SizedBox(height: 24),
+
+_ScoreButtons(
               team: widget.teamA,
               onScore: (points) {
                 _addEnd(
