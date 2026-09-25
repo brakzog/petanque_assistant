@@ -154,6 +154,29 @@ class PetanqueDetector {
 
     interpreter.run(input, output);
 
+
+    double maxBouleScore = 0.0;
+double maxCochonnetScore = 0.0;
+
+for (var i = 0; i < 8400; i++) {
+  maxBouleScore = math.max(
+    maxBouleScore,
+    output[0][4][i],
+  );
+
+  maxCochonnetScore = math.max(
+    maxCochonnetScore,
+    output[0][5][i],
+  );
+}
+
+throw StateError(
+  'DEBUG YOLO\n'
+  'Score max boule : $maxBouleScore\n'
+  'Score max cochonnet : $maxCochonnetScore',
+);
+
+
     final candidates = <PetanqueDetection>[];
 
     for (var i = 0; i < 8400; i++) {
