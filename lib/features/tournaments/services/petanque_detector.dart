@@ -45,9 +45,12 @@ class PetanqueDetector {
 
   static const int _inputSize = 640;
 
-  // Volontairement assez bas pour notre tout premier modèle,
-  // entraîné avec très peu de données.
-  static const double _confidenceThreshold = 0.10;
+  /// Seuil volontairement encore assez bas pour cette V1.
+  ///
+  /// Le modèle est maintenant fonctionnel, mais le cochonnet reste
+  /// la classe la moins représentée dans le dataset.
+  static const double _confidenceThreshold = 0.15;
+
   static const double _iouThreshold = 0.45;
 
   Interpreter? _interpreter;
@@ -68,15 +71,21 @@ class PetanqueDetector {
     await load();
 
     final interpreter = _interpreter;
+
     if (interpreter == null) {
-      throw StateError('Le modèle TFLite n\'est pas chargé.');
+      throw StateError(
+        'Le modèle TFLite n\'est pas chargé.',
+      );
     }
 
     final bytes = await File(imagePath).readAsBytes();
+
     var original = img.decodeImage(bytes);
 
     if (original == null) {
-      throw StateError('Impossible de décoder la photo.');
+      throw StateError(
+        'Impossible de décoder la photo.',
+      );
     }
 
     // Respecte l'orientation EXIF éventuelle de la photo.
@@ -93,10 +102,13 @@ class PetanqueDetector {
       _inputSize / originalHeight,
     );
 
-    final resizedWidth =
-        (originalWidth * scale).round().clamp(1, _inputSize);
-    final resizedHeight =
-        (originalHeight * scale).round().clamp(1, _inputSize);
+    final resizedWidth = (originalWidth * scale)
+        .round()
+        .clamp(1, _inputSize);
+
+    final resizedHeight = (originalHeight * scale)
+        .round()
+        .clamp(1, _inputSize);
 
     final resized = img.copyResize(
       original,
@@ -105,15 +117,18 @@ class PetanqueDetector {
       interpolation: img.Interpolation.linear,
     );
 
-    final padX = ((_inputSize - resizedWidth) / 2).floor();
-    final padY = ((_inputSize - resizedHeight) / 2).floor();
+    final padX =
+        ((_inputSize - resizedWidth) / 2).floor();
+
+    final padY =
+        ((_inputSize - resizedHeight) / 2).floor();
 
     //
     // Le modèle attend :
     //
     // [1, 3, 640, 640]
     //
-    // donc NCHW et non NHWC.
+    // NCHW.
     //
     final input = List.generate(
       1,
@@ -121,7 +136,10 @@ class PetanqueDetector {
         3,
         (_) => List.generate(
           _inputSize,
-          (_) => List<double>.filled(_inputSize, 114.0 / 255.0),
+          (_) => List<double>.filled(
+            _inputSize,
+            114.0 / 255.0,
+          ),
         ),
       ),
     );
@@ -133,49 +151,44 @@ class PetanqueDetector {
         final targetX = x + padX;
         final targetY = y + padY;
 
-        input[0][0][targetY][targetX] = pixel.r.toDouble() / 255.0;
-        input[0][1][targetY][targetX] = pixel.g.toDouble() / 255.0;
-        input[0][2][targetY][targetX] = pixel.b.toDouble() / 255.0;
+        input[0][0][targetY][targetX] =
+            pixel.r.toDouble() / 255.0;
+
+        input[0][1][targetY][targetX] =
+            pixel.g.toDouble() / 255.0;
+
+        input[0][2][targetY][targetX] =
+            pixel.b.toDouble() / 255.0;
       }
     }
 
     //
-    // Sortie réelle de notre modèle :
+    // Sortie YOLO11 :
     //
     // [1, 6, 8400]
+    //
+    // 0 = centerX
+    // 1 = centerY
+    // 2 = width
+    // 3 = height
+    // 4 = score boule
+    // 5 = score cochonnet
     //
     final output = List.generate(
       1,
       (_) => List.generate(
         6,
-        (_) => List<double>.filled(8400, 0.0),
+        (_) => List<double>.filled(
+          8400,
+          0.0,
+        ),
       ),
     );
 
-    interpreter.run(input, output);
-
-
-    double maxBouleScore = 0.0;
-double maxCochonnetScore = 0.0;
-
-for (var i = 0; i < 8400; i++) {
-  maxBouleScore = math.max(
-    maxBouleScore,
-    output[0][4][i],
-  );
-
-  maxCochonnetScore = math.max(
-    maxCochonnetScore,
-    output[0][5][i],
-  );
-}
-
-throw StateError(
-  'DEBUG YOLO\n'
-  'Score max boule : $maxBouleScore\n'
-  'Score max cochonnet : $maxCochonnetScore',
-);
-
+    interpreter.run(
+      input,
+      output,
+    );
 
     final candidates = <PetanqueDetection>[];
 
@@ -204,7 +217,8 @@ throw StateError(
       }
 
       //
-      // YOLO fournit cx, cy, width, height dans l'espace 640x640.
+      // YOLO fournit cx, cy, width et height
+      // dans l'espace letterbox 640 x 640.
       //
       var left = centerX - (width / 2);
       var top = centerY - (height / 2);
@@ -212,20 +226,32 @@ throw StateError(
       var bottom = centerY + (height / 2);
 
       //
-      // Retrait du padding letterbox.
+      // Retour dans les coordonnées de l'image originale.
       //
       left = (left - padX) / scale;
       right = (right - padX) / scale;
       top = (top - padY) / scale;
       bottom = (bottom - padY) / scale;
 
-      //
-      // Clamp dans l'image originale.
-      //
-      left = left.clamp(0.0, originalWidth.toDouble());
-      right = right.clamp(0.0, originalWidth.toDouble());
-      top = top.clamp(0.0, originalHeight.toDouble());
-      bottom = bottom.clamp(0.0, originalHeight.toDouble());
+      left = left.clamp(
+        0.0,
+        originalWidth.toDouble(),
+      );
+
+      right = right.clamp(
+        0.0,
+        originalWidth.toDouble(),
+      );
+
+      top = top.clamp(
+        0.0,
+        originalHeight.toDouble(),
+      );
+
+      bottom = bottom.clamp(
+        0.0,
+        originalHeight.toDouble(),
+      );
 
       if (right <= left || bottom <= top) {
         continue;
@@ -244,10 +270,14 @@ throw StateError(
     }
 
     candidates.sort(
-      (a, b) => b.confidence.compareTo(a.confidence),
+      (a, b) => b.confidence.compareTo(
+        a.confidence,
+      ),
     );
 
-    return _nonMaximumSuppression(candidates);
+    return _nonMaximumSuppression(
+      candidates,
+    );
   }
 
   List<PetanqueDetection> _nonMaximumSuppression(
@@ -264,7 +294,8 @@ throw StateError(
           continue;
         }
 
-        if (_iou(candidate, existing) > _iouThreshold) {
+        if (_iou(candidate, existing) >
+            _iouThreshold) {
           keep = false;
           break;
         }
@@ -282,27 +313,49 @@ throw StateError(
     PetanqueDetection a,
     PetanqueDetection b,
   ) {
-    final intersectionLeft = math.max(a.left, b.left);
-    final intersectionTop = math.max(a.top, b.top);
-    final intersectionRight = math.min(a.right, b.right);
-    final intersectionBottom = math.min(a.bottom, b.bottom);
+    final intersectionLeft = math.max(
+      a.left,
+      b.left,
+    );
 
-    final intersectionWidth =
-        math.max(0.0, intersectionRight - intersectionLeft);
+    final intersectionTop = math.max(
+      a.top,
+      b.top,
+    );
 
-    final intersectionHeight =
-        math.max(0.0, intersectionBottom - intersectionTop);
+    final intersectionRight = math.min(
+      a.right,
+      b.right,
+    );
+
+    final intersectionBottom = math.min(
+      a.bottom,
+      b.bottom,
+    );
+
+    final intersectionWidth = math.max(
+      0.0,
+      intersectionRight - intersectionLeft,
+    );
+
+    final intersectionHeight = math.max(
+      0.0,
+      intersectionBottom - intersectionTop,
+    );
 
     final intersectionArea =
         intersectionWidth * intersectionHeight;
 
     final areaA =
-        (a.right - a.left) * (a.bottom - a.top);
+        (a.right - a.left) *
+        (a.bottom - a.top);
 
     final areaB =
-        (b.right - b.left) * (b.bottom - b.top);
+        (b.right - b.left) *
+        (b.bottom - b.top);
 
-    final unionArea = areaA + areaB - intersectionArea;
+    final unionArea =
+        areaA + areaB - intersectionArea;
 
     if (unionArea <= 0) {
       return 0;
