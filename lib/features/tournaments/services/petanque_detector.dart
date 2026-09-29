@@ -186,12 +186,98 @@ class PetanqueDetector {
     );
 
     interpreter.run(
-      input,
-      output,
+  input,
+  output,
+);
+
+var aboveThreshold = 0;
+var validAfterCoordinates = 0;
+
+double? bestConfidence;
+int? bestIndex;
+PetanqueObjectType? bestType;
+
+for (var i = 0; i < 8400; i++) {
+  final bouleScore = output[0][4][i];
+  final cochonnetScore = output[0][5][i];
+
+  final confidence = math.max(
+    bouleScore,
+    cochonnetScore,
+  );
+
+  if (confidence >= _confidenceThreshold) {
+    aboveThreshold++;
+
+    if (bestConfidence == null ||
+        confidence > bestConfidence) {
+      bestConfidence = confidence;
+      bestIndex = i;
+      bestType = bouleScore >= cochonnetScore
+          ? PetanqueObjectType.boule
+          : PetanqueObjectType.cochonnet;
+    }
+
+    final centerX = output[0][0][i];
+    final centerY = output[0][1][i];
+    final width = output[0][2][i];
+    final height = output[0][3][i];
+
+    var left = centerX - (width / 2);
+    var top = centerY - (height / 2);
+    var right = centerX + (width / 2);
+    var bottom = centerY + (height / 2);
+
+    left = (left - padX) / scale;
+    right = (right - padX) / scale;
+    top = (top - padY) / scale;
+    bottom = (bottom - padY) / scale;
+
+    left = left.clamp(
+      0.0,
+      originalWidth.toDouble(),
+    );
+    right = right.clamp(
+      0.0,
+      originalWidth.toDouble(),
+    );
+    top = top.clamp(
+      0.0,
+      originalHeight.toDouble(),
+    );
+    bottom = bottom.clamp(
+      0.0,
+      originalHeight.toDouble(),
     );
 
+    if (right > left && bottom > top) {
+      validAfterCoordinates++;
+    }
+  }
+}
 
-    final candidates = <PetanqueDetection>[];
+if (bestIndex == null) {
+  throw StateError(
+    'DEBUG BOX V1\n'
+    'Candidats >= seuil : $aboveThreshold',
+  );
+}
+
+final i = bestIndex;
+
+throw StateError(
+  'DEBUG BOX V1\n'
+  'Candidats >= 0.15 : $aboveThreshold\n'
+  'Boxes valides : $validAfterCoordinates\n'
+  'Meilleur : ${bestType?.name} '
+  '${bestConfidence?.toStringAsFixed(4)}\n'
+  'cx=${output[0][0][i].toStringAsFixed(4)} '
+  'cy=${output[0][1][i].toStringAsFixed(4)}\n'
+  'w=${output[0][2][i].toStringAsFixed(4)} '
+  'h=${output[0][3][i].toStringAsFixed(4)}',
+);
+
+final candidates = <PetanqueDetection>[];
 
     for (var i = 0; i < 8400; i++) {
       final centerX = output[0][0][i];
