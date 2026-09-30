@@ -256,7 +256,7 @@ for (var i = 0; i < 8400; i++) {
   }
 }
 
-if (bestIndex == null) {
+/*if (bestIndex == null) {
   throw StateError(
     'DEBUG BOX V1\n'
     'Candidats >= seuil : $aboveThreshold',
@@ -275,15 +275,15 @@ throw StateError(
   'cy=${output[0][1][i].toStringAsFixed(4)}\n'
   'w=${output[0][2][i].toStringAsFixed(4)} '
   'h=${output[0][3][i].toStringAsFixed(4)}',
-);
+);*/
 
 final candidates = <PetanqueDetection>[];
 
     for (var i = 0; i < 8400; i++) {
-      final centerX = output[0][0][i];
-      final centerY = output[0][1][i];
-      final width = output[0][2][i];
-      final height = output[0][3][i];
+      final centerX = output[0][0][i] * _inputSize;
+final centerY = output[0][1][i] * _inputSize;
+final width = output[0][2][i] * _inputSize;
+final height = output[0][3][i] * _inputSize;
 
       final bouleScore = output[0][4][i];
       final cochonnetScore = output[0][5][i];
