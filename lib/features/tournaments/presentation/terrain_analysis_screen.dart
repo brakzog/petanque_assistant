@@ -28,6 +28,12 @@ enum _BallOwner {
   unknown,
 }
 
+enum _TerrainInteractionMode {
+  assignBalls,
+  calibrateGround,
+}
+
+
 class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -39,6 +45,74 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   String? _analysisError;
   List<PetanqueDetection> _detections = [];
   final Map<int, _BallOwner> _ballOwners = {};
+
+  _TerrainInteractionMode _interactionMode =
+    _TerrainInteractionMode.assignBalls;
+
+  List<Offset> _groundCalibrationPoints = [];
+
+
+  void _startGroundCalibration() {
+  setState(() {
+    _interactionMode =
+        _TerrainInteractionMode.calibrateGround;
+
+    _groundCalibrationPoints = [];
+  });
+}
+
+void _cancelGroundCalibration() {
+  setState(() {
+    _interactionMode =
+        _TerrainInteractionMode.assignBalls;
+
+    _groundCalibrationPoints = [];
+  });
+}
+
+void _addGroundCalibrationPoint(
+  Offset normalizedPoint,
+) {
+  if (_interactionMode !=
+      _TerrainInteractionMode.calibrateGround) {
+    return;
+  }
+
+  if (_groundCalibrationPoints.length >= 4) {
+    return;
+  }
+
+  setState(() {
+    _groundCalibrationPoints.add(
+      Offset(
+        normalizedPoint.dx.clamp(0.0, 1.0),
+        normalizedPoint.dy.clamp(0.0, 1.0),
+      ),
+    );
+  });
+}
+
+void _undoGroundCalibrationPoint() {
+  if (_groundCalibrationPoints.isEmpty) {
+    return;
+  }
+
+  setState(() {
+    _groundCalibrationPoints.removeLast();
+  });
+}
+
+void _validateGroundCalibration() {
+  if (_groundCalibrationPoints.length != 4) {
+    return;
+  }
+
+  setState(() {
+    _interactionMode =
+        _TerrainInteractionMode.assignBalls;
+  });
+}
+
 
   Future<void> _takePhoto() async {
     await _pickImage(ImageSource.camera);
@@ -89,11 +163,16 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
 
   Future<void> _analyzeImage(XFile image) async {
     setState(() {
-      _analyzing = true;
-      _analysisError = null;
-      _detections = [];
-      _ballOwners.clear();
-    });
+  _analyzing = true;
+  _analysisError = null;
+  _detections = [];
+  _ballOwners.clear();
+
+  _interactionMode =
+      _TerrainInteractionMode.assignBalls;
+
+  _groundCalibrationPoints = [];
+});
 
     try {
       final detections =
@@ -129,11 +208,16 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     }
 
     setState(() {
-      _selectedImage = null;
-      _detections = [];
-      _ballOwners.clear();
-      _analysisError = null;
-    });
+  _selectedImage = null;
+  _detections = [];
+  _ballOwners.clear();
+  _analysisError = null;
+
+  _interactionMode =
+      _TerrainInteractionMode.assignBalls;
+
+  _groundCalibrationPoints = [];
+});
   }
 
 
@@ -259,32 +343,108 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
             ),
           ] else ...[
             _DetectionImage(
-              imageFile: File(_selectedImage!.path),
-              detections: _detections,
-              ballOwners: _ballOwners,
-              teamAName: widget.teamA.name,
-              teamBName: widget.teamB.name,
-              onBallTap: _assignBall,
-            ),
+  imageFile: File(_selectedImage!.path),
+  detections: _detections,
+  ballOwners: _ballOwners,
+  teamAName: widget.teamA.name,
+  teamBName: widget.teamB.name,
+  onBallTap: _assignBall,
+
+  calibrationMode:
+      _interactionMode ==
+      _TerrainInteractionMode.calibrateGround,
+
+  calibrationPoints:
+      _groundCalibrationPoints,
+
+  onCalibrationPoint:
+      _addGroundCalibrationPoint,
+),
 
             const SizedBox(height: 8),
 
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.pinch,
-                  size: 18,
-                  ),
-                SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    'Pincez pour zoomer • Touchez une boule pour l’attribuer',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
+Text(
+  _interactionMode ==
+          _TerrainInteractionMode.calibrateGround
+      ? 'Calibration du sol : placez les 4 points du rectangle de référence.'
+      : 'Pincez pour zoomer • Touchez une boule pour l’attribuer',
+  textAlign: TextAlign.center,
+),
+
+const SizedBox(height: 12),
+
+if (_interactionMode ==
+    _TerrainInteractionMode.assignBalls)
+  OutlinedButton.icon(
+    onPressed: _startGroundCalibration,
+    icon: const Icon(Icons.crop_free),
+    label: const Text(
+      'Calibrer la perspective',
+    ),
+  )
+else
+  Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Point ${_groundCalibrationPoints.length}/4',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
             ),
+          ),
+
+          const SizedBox(height: 8),
+
+          const Text(
+            'Touchez successivement les 4 coins '
+            'du rectangle au sol : haut gauche, '
+            'haut droit, bas droit, bas gauche.',
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _groundCalibrationPoints.isEmpty
+                          ? null
+                          : _undoGroundCalibrationPoint,
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Annuler point'),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed:
+                      _groundCalibrationPoints.length == 4
+                          ? _validateGroundCalibration
+                          : null,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Valider'),
+                ),
+              ),
+            ],
+          ),
+
+          TextButton(
+            onPressed: _cancelGroundCalibration,
+            child: const Text(
+              'Annuler la calibration',
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
 
 const SizedBox(height: 16),
 
@@ -440,6 +600,9 @@ class _DetectionImage extends StatelessWidget {
     required this.teamAName,
     required this.teamBName,
     required this.onBallTap,
+    required this.calibrationMode,
+    required this.calibrationPoints,
+    required this.onCalibrationPoint,
   });
 
   final File imageFile;
@@ -450,6 +613,10 @@ class _DetectionImage extends StatelessWidget {
   final String teamBName;
 
   final ValueChanged<int> onBallTap;
+
+  final bool calibrationMode;
+  final List<Offset> calibrationPoints;
+  final ValueChanged<Offset> onCalibrationPoint;
 
   @override
   Widget build(BuildContext context) {
@@ -469,11 +636,18 @@ class _DetectionImage extends StatelessWidget {
 
               final imageSize = snapshot.data!;
 
-              final displayWidth = constraints.maxWidth;
+              final displayWidth =
+                  constraints.maxWidth;
+
               final displayHeight =
                   displayWidth *
                   imageSize.height /
                   imageSize.width;
+
+              final displaySize = Size(
+                displayWidth,
+                displayHeight,
+              );
 
               return SizedBox(
                 width: displayWidth,
@@ -485,9 +659,8 @@ class _DetectionImage extends StatelessWidget {
                   panEnabled: true,
                   scaleEnabled: true,
 
-                  // Permet de déplacer largement l'image une fois zoomée,
-                  // y compris pour ramener les bords vers le centre.
-                  boundaryMargin: EdgeInsets.symmetric(
+                  boundaryMargin:
+                      EdgeInsets.symmetric(
                     horizontal: displayWidth,
                     vertical: displayHeight,
                   ),
@@ -498,18 +671,31 @@ class _DetectionImage extends StatelessWidget {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
 
-                    //
-                    // Un seul gestionnaire de tap.
-                    // Les gestes pinch restent disponibles
-                    // pour InteractiveViewer.
-                    //
                     onTapUp: (details) {
-                      _handleTap(
+                      if (calibrationMode) {
+                        if (calibrationPoints.length >=
+                            4) {
+                          return;
+                        }
+
+                        final normalized =
+                            Offset(
+                          details.localPosition.dx /
+                              displayWidth,
+                          details.localPosition.dy /
+                              displayHeight,
+                        );
+
+                        onCalibrationPoint(
+                          normalized,
+                        );
+
+                        return;
+                      }
+
+                      _handleBallTap(
                         details.localPosition,
-                        Size(
-                          displayWidth,
-                          displayHeight,
-                        ),
+                        displaySize,
                       );
                     },
 
@@ -526,14 +712,32 @@ class _DetectionImage extends StatelessWidget {
 
                           IgnorePointer(
                             child: CustomPaint(
-                              painter: _DetectionPainter(
-                                detections: detections,
-                                ballOwners: ballOwners,
-                                teamAName: teamAName,
-                                teamBName: teamBName,
+                              painter:
+                                  _DetectionPainter(
+                                detections:
+                                    detections,
+                                ballOwners:
+                                    ballOwners,
+                                teamAName:
+                                    teamAName,
+                                teamBName:
+                                    teamBName,
                               ),
                             ),
                           ),
+
+                          if (calibrationMode ||
+                              calibrationPoints
+                                  .isNotEmpty)
+                            IgnorePointer(
+                              child: CustomPaint(
+                                painter:
+                                    _GroundCalibrationPainter(
+                                  points:
+                                      calibrationPoints,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -547,41 +751,44 @@ class _DetectionImage extends StatelessWidget {
     );
   }
 
-  void _handleTap(
+  void _handleBallTap(
     Offset position,
     Size size,
   ) {
     int? bestIndex;
     double? bestDistance;
 
-    for (final entry in detections.asMap().entries) {
+    for (final entry
+        in detections.asMap().entries) {
       final index = entry.key;
       final detection = entry.value;
 
-      if (detection.type != PetanqueObjectType.boule) {
+      if (detection.type !=
+          PetanqueObjectType.boule) {
         continue;
       }
 
       final center = Offset(
-        ((detection.left + detection.right) / 2) *
+        ((detection.left +
+                    detection.right) /
+                2) *
             size.width,
-        ((detection.top + detection.bottom) / 2) *
+        ((detection.top +
+                    detection.bottom) /
+                2) *
             size.height,
       );
 
       final boxWidth =
-          (detection.right - detection.left) *
-          size.width;
+          (detection.right -
+                  detection.left) *
+              size.width;
 
       final boxHeight =
-          (detection.bottom - detection.top) *
-          size.height;
+          (detection.bottom -
+                  detection.top) *
+              size.height;
 
-      //
-      // On conserve une zone facile à toucher,
-      // mais on ne crée plus plusieurs widgets
-      // tactiles qui se chevauchent.
-      //
       final touchRadius =
           (boxWidth > boxHeight
                   ? boxWidth
@@ -592,11 +799,6 @@ class _DetectionImage extends StatelessWidget {
           (position - center).distance;
 
       if (distance <= touchRadius) {
-        //
-        // Si plusieurs boules sont suffisamment
-        // proches, on choisit celle dont le centre
-        // est réellement le plus proche du doigt.
-        //
         if (bestDistance == null ||
             distance < bestDistance) {
           bestDistance = distance;
@@ -610,16 +812,119 @@ class _DetectionImage extends StatelessWidget {
     }
   }
 
-  Future<Size> _getImageSize(File file) async {
+  Future<Size> _getImageSize(
+    File file,
+  ) async {
     final decoded =
         await decodeImageFromList(
-          await file.readAsBytes(),
-        );
+      await file.readAsBytes(),
+    );
 
     return Size(
       decoded.width.toDouble(),
       decoded.height.toDouble(),
     );
+  }
+}
+
+
+class _GroundCalibrationPainter
+    extends CustomPainter {
+  const _GroundCalibrationPainter({
+    required this.points,
+  });
+
+  final List<Offset> points;
+
+  @override
+  void paint(
+    Canvas canvas,
+    Size size,
+  ) {
+    final displayPoints = points
+        .map(
+          (point) => Offset(
+            point.dx * size.width,
+            point.dy * size.height,
+          ),
+        )
+        .toList();
+
+    final linePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final pointPaint = Paint()
+      ..style = PaintingStyle.fill;
+
+    if (displayPoints.length >= 2) {
+      final path = Path()
+        ..moveTo(
+          displayPoints.first.dx,
+          displayPoints.first.dy,
+        );
+
+      for (var i = 1;
+          i < displayPoints.length;
+          i++) {
+        path.lineTo(
+          displayPoints[i].dx,
+          displayPoints[i].dy,
+        );
+      }
+
+      if (displayPoints.length == 4) {
+        path.close();
+      }
+
+      canvas.drawPath(
+        path,
+        linePaint,
+      );
+    }
+
+    for (var i = 0;
+        i < displayPoints.length;
+        i++) {
+      final point = displayPoints[i];
+
+      canvas.drawCircle(
+        point,
+        10,
+        pointPaint,
+      );
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: '${i + 1}',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+
+      textPainter.layout();
+
+      textPainter.paint(
+        canvas,
+        Offset(
+          point.dx -
+              textPainter.width / 2,
+          point.dy -
+              textPainter.height / 2,
+        ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _GroundCalibrationPainter
+        oldDelegate,
+  ) {
+    return oldDelegate.points != points;
   }
 }
 
