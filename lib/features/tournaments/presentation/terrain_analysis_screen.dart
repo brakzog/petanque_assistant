@@ -470,7 +470,6 @@ class _DetectionImage extends StatelessWidget {
               final imageSize = snapshot.data!;
 
               final displayWidth = constraints.maxWidth;
-
               final displayHeight =
                   displayWidth *
                   imageSize.height /
@@ -481,122 +480,53 @@ class _DetectionImage extends StatelessWidget {
                 height: displayHeight,
                 child: InteractiveViewer(
                   minScale: 1.0,
-                  maxScale: 6.0,
-
-                  // Une fois zoomée, la photo peut être déplacée.
+                  maxScale: 8.0,
                   panEnabled: true,
                   scaleEnabled: true,
+                  constrained: true,
+                  clipBehavior: Clip.hardEdge,
 
-                  // Autorise un peu de déplacement aux bords.
-                  boundaryMargin:
-                      const EdgeInsets.all(40),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
 
-                  // Important :
-                  // photo + boxes + zones tactiles sont
-                  // transformées ENSEMBLE.
-                  child: SizedBox(
-                    width: displayWidth,
-                    height: displayHeight,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.file(
-                          imageFile,
-                          fit: BoxFit.fill,
+                    //
+                    // Un seul gestionnaire de tap.
+                    // Les gestes pinch restent disponibles
+                    // pour InteractiveViewer.
+                    //
+                    onTapUp: (details) {
+                      _handleTap(
+                        details.localPosition,
+                        Size(
+                          displayWidth,
+                          displayHeight,
                         ),
+                      );
+                    },
 
-                        CustomPaint(
-                          painter: _DetectionPainter(
-                            detections: detections,
-                            ballOwners: ballOwners,
-                            teamAName: teamAName,
-                            teamBName: teamBName,
+                    child: SizedBox(
+                      width: displayWidth,
+                      height: displayHeight,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.file(
+                            imageFile,
+                            fit: BoxFit.fill,
                           ),
-                        ),
 
-                        ...detections
-                            .asMap()
-                            .entries
-                            .where(
-                              (entry) =>
-                                  entry.value.type ==
-                                  PetanqueObjectType.boule,
-                            )
-                            .map(
-                              (entry) {
-                                final index = entry.key;
-                                final detection =
-                                    entry.value;
-
-                                final left =
-                                    detection.left *
-                                    displayWidth;
-
-                                final top =
-                                    detection.top *
-                                    displayHeight;
-
-                                final width =
-                                    (detection.right -
-                                            detection.left) *
-                                        displayWidth;
-
-                                final height =
-                                    (detection.bottom -
-                                            detection.top) *
-                                        displayHeight;
-
-                                //
-                                // Zone tactile minimale :
-                                // même une petite boule
-                                // reste sélectionnable.
-                                //
-                                const minTouchSize = 44.0;
-
-                                final touchWidth =
-                                    width < minTouchSize
-                                        ? minTouchSize
-                                        : width;
-
-                                final touchHeight =
-                                    height < minTouchSize
-                                        ? minTouchSize
-                                        : height;
-
-                                final touchLeft =
-                                    left -
-                                    (touchWidth - width) / 2;
-
-                                final touchTop =
-                                    top -
-                                    (touchHeight - height) / 2;
-
-                                return Positioned(
-                                  left: touchLeft.clamp(
-                                    0.0,
-                                    displayWidth -
-                                        touchWidth,
-                                  ),
-                                  top: touchTop.clamp(
-                                    0.0,
-                                    displayHeight -
-                                        touchHeight,
-                                  ),
-                                  width: touchWidth,
-                                  height: touchHeight,
-                                  child: GestureDetector(
-                                    behavior:
-                                        HitTestBehavior
-                                            .translucent,
-                                    onTap: () =>
-                                        onBallTap(index),
-                                    child:
-                                        const SizedBox.expand(),
-                                  ),
-                                );
-                              },
+                          IgnorePointer(
+                            child: CustomPaint(
+                              painter: _DetectionPainter(
+                                detections: detections,
+                                ballOwners: ballOwners,
+                                teamAName: teamAName,
+                                teamBName: teamBName,
+                              ),
                             ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -606,6 +536,69 @@ class _DetectionImage extends StatelessWidget {
         },
       ),
     );
+  }
+
+  void _handleTap(
+    Offset position,
+    Size size,
+  ) {
+    int? bestIndex;
+    double? bestDistance;
+
+    for (final entry in detections.asMap().entries) {
+      final index = entry.key;
+      final detection = entry.value;
+
+      if (detection.type != PetanqueObjectType.boule) {
+        continue;
+      }
+
+      final center = Offset(
+        ((detection.left + detection.right) / 2) *
+            size.width,
+        ((detection.top + detection.bottom) / 2) *
+            size.height,
+      );
+
+      final boxWidth =
+          (detection.right - detection.left) *
+          size.width;
+
+      final boxHeight =
+          (detection.bottom - detection.top) *
+          size.height;
+
+      //
+      // On conserve une zone facile à toucher,
+      // mais on ne crée plus plusieurs widgets
+      // tactiles qui se chevauchent.
+      //
+      final touchRadius =
+          (boxWidth > boxHeight
+                  ? boxWidth
+                  : boxHeight)
+              .clamp(22.0, 60.0);
+
+      final distance =
+          (position - center).distance;
+
+      if (distance <= touchRadius) {
+        //
+        // Si plusieurs boules sont suffisamment
+        // proches, on choisit celle dont le centre
+        // est réellement le plus proche du doigt.
+        //
+        if (bestDistance == null ||
+            distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      }
+    }
+
+    if (bestIndex != null) {
+      onBallTap(bestIndex);
+    }
   }
 
   Future<Size> _getImageSize(File file) async {
