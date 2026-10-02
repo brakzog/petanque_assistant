@@ -421,7 +421,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
             const Divider(),
             const SizedBox(height: 16),
             Text(
-              'Résultat de l\\'analyse',
+              'Résultat de l\'analyse',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -458,7 +458,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                           Icon(Icons.error_outline),
                           SizedBox(width: 8),
                           Text(
-                            'Erreur pendant l\\'analyse',
+                            'Erreur pendant l\'analyse',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
