@@ -819,43 +819,58 @@ class _DetectionPainter extends CustomPainter {
       canvas.drawRect(rect, boxPaint);
 
       final label = detection.type == PetanqueObjectType.cochonnet
-          ? 'C ${(detection.confidence * 100).toStringAsFixed(0)}%'
-          : '${_ownerLabel(owner)} '
-              '${(detection.confidence * 100).toStringAsFixed(0)}%';
+          ? 'C'
+          : _ownerLabel(owner);
 
       final textPainter = TextPainter(
         text: TextSpan(
           text: label,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: FontWeight.bold,
           ),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
 
-      final labelTop =
-          (rect.top - textPainter.height - 4).clamp(0.0, size.height);
+      // Keep the marker deliberately tiny: it only identifies the object.
+      // Confidence values remain available in the diagnostic section below
+      // the image and no longer obscure neighbouring balls.
+      const horizontalPadding = 4.0;
+      const verticalPadding = 2.0;
+      final badgeWidth = textPainter.width + horizontalPadding * 2;
+      final badgeHeight = textPainter.height + verticalPadding * 2;
+
       final labelLeft = rect.left.clamp(
         0.0,
-        (size.width - textPainter.width - 8).clamp(0.0, size.width),
+        (size.width - badgeWidth).clamp(0.0, size.width),
+      );
+      final labelTop = rect.top.clamp(
+        0.0,
+        (size.height - badgeHeight).clamp(0.0, size.height),
       );
       final backgroundRect = Rect.fromLTWH(
         labelLeft,
         labelTop,
-        textPainter.width + 8,
-        textPainter.height + 4,
+        badgeWidth,
+        badgeHeight,
       );
 
-      canvas.drawRect(
-        backgroundRect,
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          backgroundRect,
+          const Radius.circular(3),
+        ),
         Paint()..color = _colorForDetection(detection, owner),
       );
 
       textPainter.paint(
         canvas,
-        Offset(labelLeft + 4, labelTop + 2),
+        Offset(
+          labelLeft + horizontalPadding,
+          labelTop + verticalPadding,
+        ),
       );
     }
   }
