@@ -1,44 +1,36 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-
 import '../../../domain/team.dart';
+import '../services/ground_geometry.dart';
 import '../services/petanque_detector.dart';
-
 class TerrainAnalysisScreen extends StatefulWidget {
   const TerrainAnalysisScreen({
     super.key,
     required this.teamA,
     required this.teamB,
   });
-
   final Team teamA;
   final Team teamB;
-
   @override
   State<TerrainAnalysisScreen> createState() =>
       _TerrainAnalysisScreenState();
 }
-
 enum _BallOwner {
   teamA,
   teamB,
   unknown,
 }
-
 class _MeasuredBall {
   const _MeasuredBall({
     required this.index,
     required this.owner,
     required this.distance,
   });
-
   final int index;
   final _BallOwner owner;
   final double distance;
 }
-
 class _PointAnalysisResult {
   const _PointAnalysisResult({
     required this.uncertain,
@@ -46,56 +38,44 @@ class _PointAnalysisResult {
     this.owner,
     this.points = 0,
   });
-
   final bool uncertain;
   final String message;
   final _BallOwner? owner;
   final int points;
 }
-
 class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   final ImagePicker _imagePicker = ImagePicker();
-
   XFile? _selectedImage;
   bool _pickingImage = false;
   bool _analyzing = false;
-
   String? _analysisError;
   List<PetanqueDetection> _detections = [];
   final Map<int, _BallOwner> _ballOwners = {};
   _PointAnalysisResult? _pointAnalysis;
-
   Future<void> _takePhoto() async {
     await _pickImage(ImageSource.camera);
   }
-
   Future<void> _choosePhoto() async {
     await _pickImage(ImageSource.gallery);
   }
-
   Future<void> _pickImage(ImageSource source) async {
     if (_pickingImage || _analyzing) return;
-
     setState(() {
       _pickingImage = true;
       _analysisError = null;
     });
-
     try {
       final image = await _imagePicker.pickImage(
         source: source,
         imageQuality: 95,
       );
-
       if (!mounted || image == null) return;
-
       setState(() {
         _selectedImage = image;
         _detections = [];
         _ballOwners.clear();
         _pointAnalysis = null;
       });
-
       await _analyzeImage(image);
     } finally {
       if (mounted) {
@@ -105,7 +85,6 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       }
     }
   }
-
   Future<void> _analyzeImage(XFile image) async {
     setState(() {
       _analyzing = true;
@@ -114,19 +93,15 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       _ballOwners.clear();
       _pointAnalysis = null;
     });
-
     try {
       final detections =
           await PetanqueDetector.instance.detect(image.path);
-
       if (!mounted) return;
-
       setState(() {
         _detections = detections;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         _analysisError = e.toString();
       });
@@ -138,10 +113,8 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       }
     }
   }
-
   void _removePhoto() {
     if (_analyzing) return;
-
     setState(() {
       _selectedImage = null;
       _detections = [];
@@ -150,12 +123,9 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       _pointAnalysis = null;
     });
   }
-
   Future<void> _assignBall(int detectionIndex) async {
     final detection = _detections[detectionIndex];
-
     if (detection.type != PetanqueObjectType.boule) return;
-
     final result = await showModalBottomSheet<_BallOwner>(
       context: context,
       builder: (context) {
@@ -194,23 +164,19 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
         );
       },
     );
-
     if (result == null || !mounted) return;
-
     setState(() {
       _ballOwners[detectionIndex] = result;
       _pointAnalysis = null;
     });
   }
-
-  void _analyzePoint() {
+  Future<void> _analyzePoint() async {
     final cochonnets = _detections
         .where(
           (detection) =>
               detection.type == PetanqueObjectType.cochonnet,
         )
         .toList();
-
     if (cochonnets.isEmpty) {
       _setPointAnalysis(
         const _PointAnalysisResult(
@@ -221,17 +187,25 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       );
       return;
     }
-
     // V0 : en cas de plusieurs détections de cochonnet, on prend celle
     // ayant la meilleure confiance. Plus tard, l'utilisateur pourra
     // confirmer/corriger explicitement le cochonnet retenu.
     cochonnets.sort(
       (a, b) => b.confidence.compareTo(a.confidence),
     );
-
     final jack = cochonnets.first;
-    final jackGround = _groundContactPoint(jack);
-
+    if (_selectedImage == null) return;
+    final decodedImage = await decodeImageFromList(
+      await File(_selectedImage!.path).readAsBytes(),
+    );
+    if (!mounted) return;
+    final geometry = GroundGeometry.build(
+      detections: _detections,
+      imageSize: Size(
+        decodedImage.width.toDouble(),
+        decodedImage.height.toDouble(),
+      ),
+    );
     final unassignedBallCount = _detections
         .asMap()
         .entries
@@ -239,12 +213,10 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
           if (entry.value.type != PetanqueObjectType.boule) {
             return false;
           }
-
           final owner = _ballOwners[entry.key];
           return owner == null || owner == _BallOwner.unknown;
         })
         .length;
-
     if (unassignedBallCount > 0) {
       _setPointAnalysis(
         _PointAnalysisResult(
@@ -257,36 +229,27 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       );
       return;
     }
-
     final measuredBalls = <_MeasuredBall>[];
-
     for (final entry in _detections.asMap().entries) {
       final index = entry.key;
       final detection = entry.value;
-
       if (detection.type != PetanqueObjectType.boule) continue;
-
       final owner = _ballOwners[index];
       if (owner == null || owner == _BallOwner.unknown) continue;
-
-      final ballGround = _groundContactPoint(detection);
-
       measuredBalls.add(
         _MeasuredBall(
           index: index,
           owner: owner,
-          distance: (ballGround - jackGround).distance,
+          distance: geometry.distanceMm(detection, jack),
         ),
       );
     }
-
     final teamABalls = measuredBalls
         .where((ball) => ball.owner == _BallOwner.teamA)
         .toList();
     final teamBBalls = measuredBalls
         .where((ball) => ball.owner == _BallOwner.teamB)
         .toList();
-
     if (teamABalls.isEmpty || teamBBalls.isEmpty) {
       _setPointAnalysis(
         const _PointAnalysisResult(
@@ -297,17 +260,14 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       );
       return;
     }
-
     measuredBalls.sort(
       (a, b) => a.distance.compareTo(b.distance),
     );
-
     final closest = measuredBalls.first;
     final opponentBalls = measuredBalls
         .where((ball) => ball.owner != closest.owner)
         .toList()
       ..sort((a, b) => a.distance.compareTo(b.distance));
-
     final opponentClosest = opponentBalls.first;
     final difference = opponentClosest.distance - closest.distance;
     final referenceDistance =
@@ -317,22 +277,21 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     final relativeDifference = referenceDistance <= 0
         ? 0.0
         : difference.abs() / referenceDistance;
-
-    // Garde-fou provisoire : cette V0 travaille encore dans l'espace
-    // de l'image. Si les deux meilleures boules sont trop proches,
-    // on refuse de produire un verdict automatique.
-    if (relativeDifference < 0.08) {
+    // Première correction locale de perspective. On reste volontairement
+    // prudent tant que nous n'avons pas une rectification complète du sol.
+    final differenceMm = difference.abs();
+    if (differenceMm < 10.0 || relativeDifference < 0.10) {
       _setPointAnalysis(
-        const _PointAnalysisResult(
+        _PointAnalysisResult(
           uncertain: true,
           message:
-              'Les deux meilleures boules sont trop proches pour cette estimation. '
+              'Les deux meilleures boules sont trop proches pour cette estimation corrigée '
+              '(${differenceMm.toStringAsFixed(0)} mm d’écart estimé). '
               'Mesure manuelle recommandée.',
         ),
       );
       return;
     }
-
     final points = measuredBalls
         .where(
           (ball) =>
@@ -340,36 +299,29 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
               ball.distance < opponentClosest.distance,
         )
         .length;
-
     final teamName = closest.owner == _BallOwner.teamA
         ? widget.teamA.name
         : widget.teamB.name;
-
     _setPointAnalysis(
       _PointAnalysisResult(
         uncertain: false,
         owner: closest.owner,
         points: points,
         message: points == 1
-            ? '$teamName a actuellement le point.'
-            : '$teamName a actuellement $points points.',
+            ? '$teamName a actuellement le point. '
+                'Écart estimé avec la meilleure boule adverse : '
+                '${differenceMm.toStringAsFixed(0)} mm.'
+            : '$teamName a actuellement $points points. '
+                'Écart estimé avec la meilleure boule adverse : '
+                '${differenceMm.toStringAsFixed(0)} mm.',
       ),
     );
   }
-
-  Offset _groundContactPoint(PetanqueDetection detection) {
-    return Offset(
-      (detection.left + detection.right) / 2,
-      detection.bottom,
-    );
-  }
-
   void _setPointAnalysis(_PointAnalysisResult result) {
     setState(() {
       _pointAnalysis = result;
     });
   }
-
   @override
   Widget build(BuildContext context) {
     final bouleCount = _detections
@@ -378,14 +330,12 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
               detection.type == PetanqueObjectType.boule,
         )
         .length;
-
     final cochonnetCount = _detections
         .where(
           (detection) =>
               detection.type == PetanqueObjectType.cochonnet,
         )
         .length;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analyse du terrain'),
@@ -471,7 +421,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
             const Divider(),
             const SizedBox(height: 16),
             Text(
-              'Résultat de l\'analyse',
+              'Résultat de l\\'analyse',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -508,7 +458,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                           Icon(Icons.error_outline),
                           SizedBox(width: 8),
                           Text(
-                            'Erreur pendant l\'analyse',
+                            'Erreur pendant l\\'analyse',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -552,7 +502,6 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                                       null => '',
                                     }
                                   : '';
-
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: Text(
@@ -582,12 +531,9 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     );
   }
 }
-
 class _PointAnalysisCard extends StatelessWidget {
   const _PointAnalysisCard({required this.result});
-
   final _PointAnalysisResult result;
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -615,8 +561,8 @@ class _PointAnalysisCard extends StatelessWidget {
                   if (!result.uncertain) ...[
                     const SizedBox(height: 8),
                     const Text(
-                      'Estimation provisoire : la correction complète de '
-                      'perspective n’est pas encore appliquée.',
+                      'Correction locale de perspective active. Les distances restent '
+                      'expérimentales : mesure manuelle si le cas est serré.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ],
@@ -629,16 +575,13 @@ class _PointAnalysisCard extends StatelessWidget {
     );
   }
 }
-
 class _TeamLegend extends StatelessWidget {
   const _TeamLegend({
     required this.teamAName,
     required this.teamBName,
   });
-
   final String teamAName;
   final String teamBName;
-
   @override
   Widget build(BuildContext context) {
     return Wrap(
@@ -653,7 +596,6 @@ class _TeamLegend extends StatelessWidget {
     );
   }
 }
-
 class _DetectionImage extends StatelessWidget {
   const _DetectionImage({
     required this.imageFile,
@@ -661,12 +603,10 @@ class _DetectionImage extends StatelessWidget {
     required this.ballOwners,
     required this.onBallTap,
   });
-
   final File imageFile;
   final List<PetanqueDetection> detections;
   final Map<int, _BallOwner> ballOwners;
   final ValueChanged<int> onBallTap;
-
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -682,13 +622,11 @@ class _DetectionImage extends StatelessWidget {
                   fit: BoxFit.contain,
                 );
               }
-
               final imageSize = snapshot.data!;
               final displayWidth = constraints.maxWidth;
               final displayHeight =
                   displayWidth * imageSize.height / imageSize.width;
               final displaySize = Size(displayWidth, displayHeight);
-
               return SizedBox(
                 width: displayWidth,
                 height: displayHeight,
@@ -741,22 +679,17 @@ class _DetectionImage extends StatelessWidget {
       ),
     );
   }
-
   void _handleBallTap(Offset position, Size size) {
     int? bestIndex;
     double? bestDistance;
-
     for (final entry in detections.asMap().entries) {
       final index = entry.key;
       final detection = entry.value;
-
       if (detection.type != PetanqueObjectType.boule) continue;
-
       final center = Offset(
         ((detection.left + detection.right) / 2) * size.width,
         ((detection.top + detection.bottom) / 2) * size.height,
       );
-
       final boxWidth =
           (detection.right - detection.left) * size.width;
       final boxHeight =
@@ -764,64 +697,52 @@ class _DetectionImage extends StatelessWidget {
       final touchRadius =
           (boxWidth > boxHeight ? boxWidth : boxHeight).clamp(22.0, 60.0);
       final distance = (position - center).distance;
-
       if (distance <= touchRadius &&
           (bestDistance == null || distance < bestDistance)) {
         bestDistance = distance;
         bestIndex = index;
       }
     }
-
     if (bestIndex != null) {
       onBallTap(bestIndex);
     }
   }
-
   Future<Size> _getImageSize(File file) async {
     final decoded =
         await decodeImageFromList(await file.readAsBytes());
-
     return Size(
       decoded.width.toDouble(),
       decoded.height.toDouble(),
     );
   }
 }
-
 class _DetectionPainter extends CustomPainter {
   const _DetectionPainter({
     required this.detections,
     required this.ballOwners,
   });
-
   final List<PetanqueDetection> detections;
   final Map<int, _BallOwner> ballOwners;
-
   @override
   void paint(Canvas canvas, Size size) {
     for (final entry in detections.asMap().entries) {
       final index = entry.key;
       final detection = entry.value;
       final owner = ballOwners[index];
-
       final rect = Rect.fromLTRB(
         detection.left * size.width,
         detection.top * size.height,
         detection.right * size.width,
         detection.bottom * size.height,
       );
-
       final boxPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = owner == null ? 3 : 5
         ..color = _colorForDetection(detection, owner);
-
       canvas.drawRect(rect, boxPaint);
-
       final label = detection.type == PetanqueObjectType.cochonnet
           ? 'C'
           : _ownerLabel(owner);
-
       final textPainter = TextPainter(
         text: TextSpan(
           text: label,
@@ -833,7 +754,6 @@ class _DetectionPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-
       // Keep the marker deliberately tiny: it only identifies the object.
       // Confidence values remain available in the diagnostic section below
       // the image and no longer obscure neighbouring balls.
@@ -841,7 +761,6 @@ class _DetectionPainter extends CustomPainter {
       const verticalPadding = 2.0;
       final badgeWidth = textPainter.width + horizontalPadding * 2;
       final badgeHeight = textPainter.height + verticalPadding * 2;
-
       final labelLeft = rect.left.clamp(
         0.0,
         (size.width - badgeWidth).clamp(0.0, size.width),
@@ -856,7 +775,6 @@ class _DetectionPainter extends CustomPainter {
         badgeWidth,
         badgeHeight,
       );
-
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           backgroundRect,
@@ -864,7 +782,6 @@ class _DetectionPainter extends CustomPainter {
         ),
         Paint()..color = _colorForDetection(detection, owner),
       );
-
       textPainter.paint(
         canvas,
         Offset(
@@ -874,7 +791,6 @@ class _DetectionPainter extends CustomPainter {
       );
     }
   }
-
   String _ownerLabel(_BallOwner? owner) {
     return switch (owner) {
       _BallOwner.teamA => 'A',
@@ -883,7 +799,6 @@ class _DetectionPainter extends CustomPainter {
       null => '•',
     };
   }
-
   Color _colorForDetection(
     PetanqueDetection detection,
     _BallOwner? owner,
@@ -891,7 +806,6 @@ class _DetectionPainter extends CustomPainter {
     if (detection.type == PetanqueObjectType.cochonnet) {
       return Colors.orange.shade700;
     }
-
     return switch (owner) {
       _BallOwner.teamA => Colors.blue.shade700,
       _BallOwner.teamB => Colors.red.shade700,
@@ -899,7 +813,6 @@ class _DetectionPainter extends CustomPainter {
       null => Colors.green.shade700,
     };
   }
-
   @override
   bool shouldRepaint(covariant _DetectionPainter oldDelegate) {
     return oldDelegate.detections != detections ||
