@@ -4,15 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/petanque_detector.dart';
+import '../../../domain/team.dart';
 
 class TerrainAnalysisScreen extends StatefulWidget {
   const TerrainAnalysisScreen({
     super.key,
+    required this.teamA,
+    required this.teamB,
   });
+
+  final Team teamA;
+  final Team teamB;
 
   @override
   State<TerrainAnalysisScreen> createState() =>
       _TerrainAnalysisScreenState();
+}
+
+
+enum _BallOwner {
+  teamA,
+  teamB,
+  unknown,
 }
 
 class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
@@ -25,6 +38,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
 
   String? _analysisError;
   List<PetanqueDetection> _detections = [];
+  final Map<int, _BallOwner> _ballOwners = {};
 
   Future<void> _takePhoto() async {
     await _pickImage(ImageSource.camera);
@@ -78,6 +92,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       _analyzing = true;
       _analysisError = null;
       _detections = [];
+      _ballOwners.clear();
     });
 
     try {
@@ -116,9 +131,83 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     setState(() {
       _selectedImage = null;
       _detections = [];
+      _ballOwners.clear();
       _analysisError = null;
     });
   }
+
+
+  Future<void> _assignBall(int detectionIndex) async {
+  final detection = _detections[detectionIndex];
+
+  if (detection.type != PetanqueObjectType.boule) {
+    return;
+  }
+
+  final result = await showModalBottomSheet<_BallOwner>(
+    context: context,
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'À qui appartient cette boule ?',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(
+                    context,
+                    _BallOwner.teamA,
+                  );
+                },
+                child: Text(widget.teamA.name),
+              ),
+
+              const SizedBox(height: 8),
+
+              FilledButton.tonal(
+                onPressed: () {
+                  Navigator.pop(
+                    context,
+                    _BallOwner.teamB,
+                  );
+                },
+                child: Text(widget.teamB.name),
+              ),
+
+              const SizedBox(height: 8),
+
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.pop(
+                    context,
+                    _BallOwner.unknown,
+                  );
+                },
+                child: const Text('Indéterminée'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  if (result == null || !mounted) {
+    return;
+  }
+
+  setState(() {
+    _ballOwners[detectionIndex] = result;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
@@ -172,8 +261,32 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
             _DetectionImage(
               imageFile: File(_selectedImage!.path),
               detections: _detections,
+              ballOwners: _ballOwners,
+              teamAName: widget.teamA.name,
+              teamBName: widget.teamB.name,
+              onBallTap: _assignBall,
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(height: 8),
+
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.pinch,
+                  size: 18,
+                  ),
+                SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Pincez pour zoomer • Touchez une boule pour l’attribuer',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+
+const SizedBox(height: 16),
 
             Row(
               children: [
@@ -323,10 +436,20 @@ class _DetectionImage extends StatelessWidget {
   const _DetectionImage({
     required this.imageFile,
     required this.detections,
+    required this.ballOwners,
+    required this.teamAName,
+    required this.teamBName,
+    required this.onBallTap,
   });
 
   final File imageFile;
   final List<PetanqueDetection> detections;
+  final Map<int, _BallOwner> ballOwners;
+
+  final String teamAName;
+  final String teamBName;
+
+  final ValueChanged<int> onBallTap;
 
   @override
   Widget build(BuildContext context) {
@@ -347,6 +470,7 @@ class _DetectionImage extends StatelessWidget {
               final imageSize = snapshot.data!;
 
               final displayWidth = constraints.maxWidth;
+
               final displayHeight =
                   displayWidth *
                   imageSize.height /
@@ -355,19 +479,126 @@ class _DetectionImage extends StatelessWidget {
               return SizedBox(
                 width: displayWidth,
                 height: displayHeight,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(
-                      imageFile,
-                      fit: BoxFit.fill,
+                child: InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 6.0,
+
+                  // Une fois zoomée, la photo peut être déplacée.
+                  panEnabled: true,
+                  scaleEnabled: true,
+
+                  // Autorise un peu de déplacement aux bords.
+                  boundaryMargin:
+                      const EdgeInsets.all(40),
+
+                  // Important :
+                  // photo + boxes + zones tactiles sont
+                  // transformées ENSEMBLE.
+                  child: SizedBox(
+                    width: displayWidth,
+                    height: displayHeight,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.file(
+                          imageFile,
+                          fit: BoxFit.fill,
+                        ),
+
+                        CustomPaint(
+                          painter: _DetectionPainter(
+                            detections: detections,
+                            ballOwners: ballOwners,
+                            teamAName: teamAName,
+                            teamBName: teamBName,
+                          ),
+                        ),
+
+                        ...detections
+                            .asMap()
+                            .entries
+                            .where(
+                              (entry) =>
+                                  entry.value.type ==
+                                  PetanqueObjectType.boule,
+                            )
+                            .map(
+                              (entry) {
+                                final index = entry.key;
+                                final detection =
+                                    entry.value;
+
+                                final left =
+                                    detection.left *
+                                    displayWidth;
+
+                                final top =
+                                    detection.top *
+                                    displayHeight;
+
+                                final width =
+                                    (detection.right -
+                                            detection.left) *
+                                        displayWidth;
+
+                                final height =
+                                    (detection.bottom -
+                                            detection.top) *
+                                        displayHeight;
+
+                                //
+                                // Zone tactile minimale :
+                                // même une petite boule
+                                // reste sélectionnable.
+                                //
+                                const minTouchSize = 44.0;
+
+                                final touchWidth =
+                                    width < minTouchSize
+                                        ? minTouchSize
+                                        : width;
+
+                                final touchHeight =
+                                    height < minTouchSize
+                                        ? minTouchSize
+                                        : height;
+
+                                final touchLeft =
+                                    left -
+                                    (touchWidth - width) / 2;
+
+                                final touchTop =
+                                    top -
+                                    (touchHeight - height) / 2;
+
+                                return Positioned(
+                                  left: touchLeft.clamp(
+                                    0.0,
+                                    displayWidth -
+                                        touchWidth,
+                                  ),
+                                  top: touchTop.clamp(
+                                    0.0,
+                                    displayHeight -
+                                        touchHeight,
+                                  ),
+                                  width: touchWidth,
+                                  height: touchHeight,
+                                  child: GestureDetector(
+                                    behavior:
+                                        HitTestBehavior
+                                            .translucent,
+                                    onTap: () =>
+                                        onBallTap(index),
+                                    child:
+                                        const SizedBox.expand(),
+                                  ),
+                                );
+                              },
+                            ),
+                      ],
                     ),
-                    CustomPaint(
-                      painter: _DetectionPainter(
-                        detections: detections,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               );
             },
@@ -379,7 +610,9 @@ class _DetectionImage extends StatelessWidget {
 
   Future<Size> _getImageSize(File file) async {
     final decoded =
-        await decodeImageFromList(await file.readAsBytes());
+        await decodeImageFromList(
+          await file.readAsBytes(),
+        );
 
     return Size(
       decoded.width.toDouble(),
@@ -391,13 +624,23 @@ class _DetectionImage extends StatelessWidget {
 class _DetectionPainter extends CustomPainter {
   const _DetectionPainter({
     required this.detections,
+    required this.ballOwners,
+    required this.teamAName,
+    required this.teamBName,
   });
 
   final List<PetanqueDetection> detections;
+  final Map<int, _BallOwner> ballOwners;
+
+  final String teamAName;
+  final String teamBName;
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final detection in detections) {
+    for (final entry in detections.asMap().entries) {
+      final index = entry.key;
+      final detection = entry.value;
+
       final rect = Rect.fromLTRB(
         detection.left * size.width,
         detection.top * size.height,
@@ -405,15 +648,33 @@ class _DetectionPainter extends CustomPainter {
         detection.bottom * size.height,
       );
 
+      final owner = ballOwners[index];
+
       final boxPaint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3;
+        ..strokeWidth = owner == null ? 3 : 5;
 
       canvas.drawRect(rect, boxPaint);
 
-      final label =
-          '${detection.label} '
-          '${(detection.confidence * 100).toStringAsFixed(0)}%';
+      String label;
+
+      if (detection.type ==
+          PetanqueObjectType.cochonnet) {
+        label =
+            'cochonnet '
+            '${(detection.confidence * 100).toStringAsFixed(0)}%';
+      } else {
+        final ownerLabel = switch (owner) {
+          _BallOwner.teamA => teamAName,
+          _BallOwner.teamB => teamBName,
+          _BallOwner.unknown => '?',
+          null => 'toucher',
+        };
+
+        label =
+            '$ownerLabel '
+            '${(detection.confidence * 100).toStringAsFixed(0)}%';
+      }
 
       final textPainter = TextPainter(
         text: TextSpan(
@@ -458,6 +719,9 @@ class _DetectionPainter extends CustomPainter {
   bool shouldRepaint(
     covariant _DetectionPainter oldDelegate,
   ) {
-    return oldDelegate.detections != detections;
+    return oldDelegate.detections != detections ||
+        oldDelegate.ballOwners != ballOwners ||
+        oldDelegate.teamAName != teamAName ||
+        oldDelegate.teamBName != teamBName;
   }
 }

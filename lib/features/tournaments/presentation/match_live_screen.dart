@@ -269,8 +269,10 @@ FilledButton.icon(
   onPressed: () {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) =>
-            const TerrainAnalysisScreen(),
+        builder: (context) => TerrainAnalysisScreen(
+          teamA: widget.teamA,
+          teamB: widget.teamB,
+        ),
       ),
     );
   },
