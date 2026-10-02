@@ -481,56 +481,21 @@ class _DetectionImage extends StatelessWidget {
                 child: InteractiveViewer(
                   minScale: 1.0,
                   maxScale: 8.0,
+
                   panEnabled: true,
                   scaleEnabled: true,
+
+                  // Permet de déplacer largement l'image une fois zoomée,
+                  // y compris pour ramener les bords vers le centre.
+                  boundaryMargin: EdgeInsets.symmetric(
+                    horizontal: displayWidth,
+                    vertical: displayHeight,
+                  ),
+
                   constrained: true,
                   clipBehavior: Clip.hardEdge,
 
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-
-                    //
-                    // Un seul gestionnaire de tap.
-                    // Les gestes pinch restent disponibles
-                    // pour InteractiveViewer.
-                    //
-                    onTapUp: (details) {
-                      _handleTap(
-                        details.localPosition,
-                        Size(
-                          displayWidth,
-                          displayHeight,
-                        ),
-                      );
-                    },
-
-                    child: SizedBox(
-                      width: displayWidth,
-                      height: displayHeight,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.file(
-                            imageFile,
-                            fit: BoxFit.fill,
-                          ),
-
-                          IgnorePointer(
-                            child: CustomPaint(
-                              painter: _DetectionPainter(
-                                detections: detections,
-                                ballOwners: ballOwners,
-                                teamAName: teamAName,
-                                teamBName: teamBName,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
+                  child: GestureDetector();
             },
           );
         },
