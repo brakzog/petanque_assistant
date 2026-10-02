@@ -495,7 +495,51 @@ class _DetectionImage extends StatelessWidget {
                   constrained: true,
                   clipBehavior: Clip.hardEdge,
 
-                  child: GestureDetector();
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+
+                    //
+                    // Un seul gestionnaire de tap.
+                    // Les gestes pinch restent disponibles
+                    // pour InteractiveViewer.
+                    //
+                    onTapUp: (details) {
+                      _handleTap(
+                        details.localPosition,
+                        Size(
+                          displayWidth,
+                          displayHeight,
+                        ),
+                      );
+                    },
+
+                    child: SizedBox(
+                      width: displayWidth,
+                      height: displayHeight,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.file(
+                            imageFile,
+                            fit: BoxFit.fill,
+                          ),
+
+                          IgnorePointer(
+                            child: CustomPaint(
+                              painter: _DetectionPainter(
+                                detections: detections,
+                                ballOwners: ballOwners,
+                                teamAName: teamAName,
+                                teamBName: teamBName,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
             },
           );
         },
