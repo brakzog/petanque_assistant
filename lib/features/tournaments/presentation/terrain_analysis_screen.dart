@@ -199,10 +199,15 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     }
 
     final ranked = <_RankedBall>[];
+    final jackBallIndex = _findBallDetectionAtJack(jack);
 
     for (final entry in _detections.asMap().entries) {
       final detection = entry.value;
       if (detection.type != PetanqueObjectType.boule) continue;
+
+      // Si V3 a classé le cochonnet comme une boule, la confirmation
+      // utilisateur a priorité : cette détection est exclue du classement.
+      if (entry.key == jackBallIndex) continue;
 
       // Point utile de la boule : bas-centre de la bounding box, qui est une
       // meilleure approximation du contact au sol que le centre de la sphère.
@@ -225,6 +230,46 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       for (var i = 0; i < ranked.length; i++)
         ranked[i].detectionIndex: i + 1,
     };
+  }
+
+  int? _findBallDetectionAtJack(Offset jack) {
+    int? bestIndex;
+    double? bestScore;
+
+    for (final entry in _detections.asMap().entries) {
+      final detection = entry.value;
+      if (detection.type != PetanqueObjectType.boule) continue;
+
+      final center = Offset(
+        (detection.left + detection.right) / 2,
+        (detection.top + detection.bottom) / 2,
+      );
+      final width = (detection.right - detection.left).abs();
+      final height = (detection.bottom - detection.top).abs();
+      final radius = (width > height ? width : height) / 2;
+
+      final insideBox =
+          jack.dx >= detection.left &&
+          jack.dx <= detection.right &&
+          jack.dy >= detection.top &&
+          jack.dy <= detection.bottom;
+
+      final distance = (jack - center).distance;
+
+      // Un tap légèrement à côté du centre reste accepté, mais on évite
+      // d'exclure une vraie boule voisine : la tolérance dépend directement
+      // de la taille de la détection concernée.
+      final tolerance = radius * 1.35;
+      if (!insideBox && distance > tolerance) continue;
+
+      final score = radius <= 0 ? distance : distance / radius;
+      if (bestScore == null || score < bestScore) {
+        bestScore = score;
+        bestIndex = entry.key;
+      }
+    }
+
+    return bestIndex;
   }
 
   @override
@@ -683,6 +728,14 @@ class _DetectionPainter extends CustomPainter {
       // l'utilisateur doit confirmer ou qu'il a positionné manuellement.
       if (detection.type == PetanqueObjectType.cochonnet) continue;
 
+      // Dès qu'un viseur C est posé sur une détection classée "boule",
+      // l'intention utilisateur prime : on ne dessine plus cette détection
+      // comme une boule. Le classement applique exactement la même règle.
+      if (jackPosition != null &&
+          _isBallDetectionAtJack(detection, jackPosition!)) {
+        continue;
+      }
+
       final rect = Rect.fromLTRB(
         detection.left * size.width,
         detection.top * size.height,
@@ -714,6 +767,29 @@ class _DetectionPainter extends CustomPainter {
         Offset(jack.dx * size.width, jack.dy * size.height),
       );
     }
+  }
+
+  bool _isBallDetectionAtJack(
+    PetanqueDetection detection,
+    Offset jack,
+  ) {
+    if (detection.type != PetanqueObjectType.boule) return false;
+
+    final center = Offset(
+      (detection.left + detection.right) / 2,
+      (detection.top + detection.bottom) / 2,
+    );
+    final width = (detection.right - detection.left).abs();
+    final height = (detection.bottom - detection.top).abs();
+    final radius = (width > height ? width : height) / 2;
+
+    final insideBox =
+        jack.dx >= detection.left &&
+        jack.dx <= detection.right &&
+        jack.dy >= detection.top &&
+        jack.dy <= detection.bottom;
+
+    return insideBox || (jack - center).distance <= radius * 1.35;
   }
 
   void _drawRankBadge(
