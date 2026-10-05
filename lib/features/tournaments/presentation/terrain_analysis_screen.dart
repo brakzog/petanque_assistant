@@ -1,81 +1,86 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
 import '../../../domain/team.dart';
-import '../services/ground_geometry.dart';
 import '../services/petanque_detector.dart';
+
 class TerrainAnalysisScreen extends StatefulWidget {
   const TerrainAnalysisScreen({
     super.key,
     required this.teamA,
     required this.teamB,
   });
+
+  // Conservés dans l'API de l'écran pour ne rien casser côté MatchLiveScreen.
+  // L'analyse terrain n'a désormais plus besoin de connaître le propriétaire
+  // de chaque boule.
   final Team teamA;
   final Team teamB;
+
   @override
   State<TerrainAnalysisScreen> createState() =>
       _TerrainAnalysisScreenState();
 }
-enum _BallOwner {
-  teamA,
-  teamB,
-  unknown,
-}
-class _MeasuredBall {
-  const _MeasuredBall({
-    required this.index,
-    required this.owner,
+
+class _RankedBall {
+  const _RankedBall({
+    required this.detectionIndex,
     required this.distance,
   });
-  final int index;
-  final _BallOwner owner;
+
+  final int detectionIndex;
   final double distance;
 }
-class _PointAnalysisResult {
-  const _PointAnalysisResult({
-    required this.uncertain,
-    required this.message,
-    this.owner,
-    this.points = 0,
-  });
-  final bool uncertain;
-  final String message;
-  final _BallOwner? owner;
-  final int points;
-}
+
 class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   final ImagePicker _imagePicker = ImagePicker();
+
   XFile? _selectedImage;
   bool _pickingImage = false;
   bool _analyzing = false;
   String? _analysisError;
   List<PetanqueDetection> _detections = [];
-  final Map<int, _BallOwner> _ballOwners = {};
-  _PointAnalysisResult? _pointAnalysis;
+
+  // Position normalisée dans la photo (0..1 / 0..1).
+  Offset? _jackPosition;
+  bool _jackConfirmed = false;
+  bool _jackWasDetected = false;
+
+  // detectionIndex -> rang (1 = boule la plus proche du cochonnet).
+  Map<int, int> _ballRanks = {};
+
   Future<void> _takePhoto() async {
     await _pickImage(ImageSource.camera);
   }
+
   Future<void> _choosePhoto() async {
     await _pickImage(ImageSource.gallery);
   }
+
   Future<void> _pickImage(ImageSource source) async {
     if (_pickingImage || _analyzing) return;
+
     setState(() {
       _pickingImage = true;
       _analysisError = null;
     });
+
     try {
       final image = await _imagePicker.pickImage(
         source: source,
         imageQuality: 95,
       );
+
       if (!mounted || image == null) return;
+
       setState(() {
         _selectedImage = image;
         _detections = [];
-        _ballOwners.clear();
-        _pointAnalysis = null;
+        _resetJack();
       });
+
       await _analyzeImage(image);
     } finally {
       if (mounted) {
@@ -85,20 +90,46 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       }
     }
   }
+
   Future<void> _analyzeImage(XFile image) async {
     setState(() {
       _analyzing = true;
       _analysisError = null;
       _detections = [];
-      _ballOwners.clear();
-      _pointAnalysis = null;
+      _resetJack();
     });
+
     try {
       final detections =
           await PetanqueDetector.instance.detect(image.path);
+
       if (!mounted) return;
+
+      final detectedJacks = detections
+          .where(
+            (detection) =>
+                detection.type == PetanqueObjectType.cochonnet,
+          )
+          .toList()
+        ..sort(
+          (a, b) => b.confidence.compareTo(a.confidence),
+        );
+
+      Offset? proposedJack;
+      if (detectedJacks.isNotEmpty) {
+        final jack = detectedJacks.first;
+        proposedJack = Offset(
+          ((jack.left + jack.right) / 2).clamp(0.0, 1.0),
+          ((jack.top + jack.bottom) / 2).clamp(0.0, 1.0),
+        );
+      }
+
       setState(() {
         _detections = detections;
+        _jackPosition = proposedJack;
+        _jackWasDetected = proposedJack != null;
+        _jackConfirmed = false;
+        _ballRanks = {};
       });
     } catch (e) {
       if (!mounted) return;
@@ -113,229 +144,104 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       }
     }
   }
+
+  void _resetJack() {
+    _jackPosition = null;
+    _jackConfirmed = false;
+    _jackWasDetected = false;
+    _ballRanks = {};
+  }
+
   void _removePhoto() {
     if (_analyzing) return;
+
     setState(() {
       _selectedImage = null;
       _detections = [];
-      _ballOwners.clear();
       _analysisError = null;
-      _pointAnalysis = null;
+      _resetJack();
     });
   }
-  Future<void> _assignBall(int detectionIndex) async {
-    final detection = _detections[detectionIndex];
-    if (detection.type != PetanqueObjectType.boule) return;
-    final result = await showModalBottomSheet<_BallOwner>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'À qui appartient cette boule ?',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(context, _BallOwner.teamA),
-                  child: Text('A — ${widget.teamA.name}'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton.tonal(
-                  onPressed: () =>
-                      Navigator.pop(context, _BallOwner.teamB),
-                  child: Text('B — ${widget.teamB.name}'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: () =>
-                      Navigator.pop(context, _BallOwner.unknown),
-                  child: const Text('Indéterminée'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    if (result == null || !mounted) return;
+
+  void _setJackPosition(Offset normalizedPosition) {
     setState(() {
-      _ballOwners[detectionIndex] = result;
-      _pointAnalysis = null;
+      _jackPosition = Offset(
+        normalizedPosition.dx.clamp(0.0, 1.0),
+        normalizedPosition.dy.clamp(0.0, 1.0),
+      );
+      _jackConfirmed = false;
+      _jackWasDetected = false;
+      _ballRanks = {};
     });
   }
-  Future<void> _analyzePoint() async {
-    final cochonnets = _detections
-        .where(
-          (detection) =>
-              detection.type == PetanqueObjectType.cochonnet,
-        )
-        .toList();
-    if (cochonnets.isEmpty) {
-      _setPointAnalysis(
-        const _PointAnalysisResult(
-          uncertain: true,
-          message:
-              'Impossible de déterminer le point : aucun cochonnet détecté.',
-        ),
-      );
+
+  void _confirmJack() {
+    if (_jackPosition == null) return;
+
+    setState(() {
+      _jackConfirmed = true;
+      _computeBallRanking();
+    });
+  }
+
+  void _repositionJack() {
+    setState(() {
+      _jackConfirmed = false;
+      _ballRanks = {};
+    });
+  }
+
+  void _computeBallRanking() {
+    final jack = _jackPosition;
+    if (jack == null) {
+      _ballRanks = {};
       return;
     }
-    // V0 : en cas de plusieurs détections de cochonnet, on prend celle
-    // ayant la meilleure confiance. Plus tard, l'utilisateur pourra
-    // confirmer/corriger explicitement le cochonnet retenu.
-    cochonnets.sort(
-      (a, b) => b.confidence.compareTo(a.confidence),
-    );
-    final jack = cochonnets.first;
-    if (_selectedImage == null) return;
-    final decodedImage = await decodeImageFromList(
-      await File(_selectedImage!.path).readAsBytes(),
-    );
-    if (!mounted) return;
-    final geometry = GroundGeometry.build(
-      detections: _detections,
-      imageSize: Size(
-        decodedImage.width.toDouble(),
-        decodedImage.height.toDouble(),
-      ),
-    );
-    final unassignedBallCount = _detections
-        .asMap()
-        .entries
-        .where((entry) {
-          if (entry.value.type != PetanqueObjectType.boule) {
-            return false;
-          }
-          final owner = _ballOwners[entry.key];
-          return owner == null || owner == _BallOwner.unknown;
-        })
-        .length;
-    if (unassignedBallCount > 0) {
-      _setPointAnalysis(
-        _PointAnalysisResult(
-          uncertain: true,
-          message:
-              '$unassignedBallCount boule${unassignedBallCount > 1 ? 's' : ''} '
-              '${unassignedBallCount > 1 ? 'ne sont pas attribuées' : 'n’est pas attribuée'}. '
-              'Attribuez les boules à A ou B avant de calculer le point.',
-        ),
-      );
-      return;
-    }
-    final measuredBalls = <_MeasuredBall>[];
+
+    final ranked = <_RankedBall>[];
+
     for (final entry in _detections.asMap().entries) {
-      final index = entry.key;
       final detection = entry.value;
       if (detection.type != PetanqueObjectType.boule) continue;
-      final owner = _ballOwners[index];
-      if (owner == null || owner == _BallOwner.unknown) continue;
-      measuredBalls.add(
-        _MeasuredBall(
-          index: index,
-          owner: owner,
-          distance: geometry.distanceMm(detection, jack),
+
+      // Point utile de la boule : bas-centre de la bounding box, qui est une
+      // meilleure approximation du contact au sol que le centre de la sphère.
+      final groundPoint = Offset(
+        ((detection.left + detection.right) / 2).clamp(0.0, 1.0),
+        detection.bottom.clamp(0.0, 1.0),
+      );
+
+      ranked.add(
+        _RankedBall(
+          detectionIndex: entry.key,
+          distance: (groundPoint - jack).distance,
         ),
       );
     }
-    final teamABalls = measuredBalls
-        .where((ball) => ball.owner == _BallOwner.teamA)
-        .toList();
-    final teamBBalls = measuredBalls
-        .where((ball) => ball.owner == _BallOwner.teamB)
-        .toList();
-    if (teamABalls.isEmpty || teamBBalls.isEmpty) {
-      _setPointAnalysis(
-        const _PointAnalysisResult(
-          uncertain: true,
-          message:
-              'Il faut au moins une boule attribuée à chaque équipe pour comparer le point.',
-        ),
-      );
-      return;
-    }
-    measuredBalls.sort(
-      (a, b) => a.distance.compareTo(b.distance),
-    );
-    final closest = measuredBalls.first;
-    final opponentBalls = measuredBalls
-        .where((ball) => ball.owner != closest.owner)
-        .toList()
-      ..sort((a, b) => a.distance.compareTo(b.distance));
-    final opponentClosest = opponentBalls.first;
-    final difference = opponentClosest.distance - closest.distance;
-    final referenceDistance =
-        opponentClosest.distance > closest.distance
-            ? opponentClosest.distance
-            : closest.distance;
-    final relativeDifference = referenceDistance <= 0
-        ? 0.0
-        : difference.abs() / referenceDistance;
-    // Première correction locale de perspective. On reste volontairement
-    // prudent tant que nous n'avons pas une rectification complète du sol.
-    final differenceMm = difference.abs();
-    if (differenceMm < 10.0 || relativeDifference < 0.10) {
-      _setPointAnalysis(
-        _PointAnalysisResult(
-          uncertain: true,
-          message:
-              'Les deux meilleures boules sont trop proches pour cette estimation corrigée '
-              '(${differenceMm.toStringAsFixed(0)} mm d’écart estimé). '
-              'Mesure manuelle recommandée.',
-        ),
-      );
-      return;
-    }
-    final points = measuredBalls
-        .where(
-          (ball) =>
-              ball.owner == closest.owner &&
-              ball.distance < opponentClosest.distance,
-        )
-        .length;
-    final teamName = closest.owner == _BallOwner.teamA
-        ? widget.teamA.name
-        : widget.teamB.name;
-    _setPointAnalysis(
-      _PointAnalysisResult(
-        uncertain: false,
-        owner: closest.owner,
-        points: points,
-        message: points == 1
-            ? '$teamName a actuellement le point. '
-                'Écart estimé avec la meilleure boule adverse : '
-                '${differenceMm.toStringAsFixed(0)} mm.'
-            : '$teamName a actuellement $points points. '
-                'Écart estimé avec la meilleure boule adverse : '
-                '${differenceMm.toStringAsFixed(0)} mm.',
-      ),
-    );
+
+    ranked.sort((a, b) => a.distance.compareTo(b.distance));
+
+    _ballRanks = {
+      for (var i = 0; i < ranked.length; i++)
+        ranked[i].detectionIndex: i + 1,
+    };
   }
-  void _setPointAnalysis(_PointAnalysisResult result) {
-    setState(() {
-      _pointAnalysis = result;
-    });
-  }
+
   @override
   Widget build(BuildContext context) {
     final bouleCount = _detections
         .where(
-          (detection) =>
-              detection.type == PetanqueObjectType.boule,
+          (detection) => detection.type == PetanqueObjectType.boule,
         )
         .length;
+
     final cochonnetCount = _detections
         .where(
           (detection) =>
               detection.type == PetanqueObjectType.cochonnet,
         )
         .length;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analyse du terrain'),
@@ -370,30 +276,62 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
             _DetectionImage(
               imageFile: File(_selectedImage!.path),
               detections: _detections,
-              ballOwners: _ballOwners,
-              onBallTap: _assignBall,
+              jackPosition: _jackPosition,
+              jackConfirmed: _jackConfirmed,
+              ballRanks: _ballRanks,
+              onJackTap: _setJackPosition,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Pincez pour zoomer • Touchez une boule pour l’attribuer',
+            Text(
+              _jackConfirmed
+                  ? 'Pincez pour zoomer • Le cochonnet est confirmé'
+                  : 'Pincez pour zoomer • Touchez le vrai cochonnet pour corriger sa position',
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 10),
-            _TeamLegend(
-              teamAName: widget.teamA.name,
-              teamBName: widget.teamB.name,
-            ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _analyzing || _detections.isEmpty
-                  ? null
-                  : _analyzePoint,
-              icon: const Icon(Icons.straighten),
-              label: const Text('Qui a le point ?'),
+            _JackValidationCard(
+              jackPosition: _jackPosition,
+              jackConfirmed: _jackConfirmed,
+              jackWasDetected: _jackWasDetected,
+              onConfirm: _confirmJack,
+              onReposition: _repositionJack,
             ),
-            if (_pointAnalysis != null) ...[
+            if (_jackConfirmed && _ballRanks.isNotEmpty) ...[
               const SizedBox(height: 12),
-              _PointAnalysisCard(result: _pointAnalysis!),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.format_list_numbered),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Ordre des boules',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_ballRanks.length} boule${_ballRanks.length > 1 ? 's' : ''} classée${_ballRanks.length > 1 ? 's' : ''}. '
+                              '1 est la plus proche du cochonnet.',
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Les joueurs identifient ensuite à qui appartiennent les boules. '
+                              'Aucune attribution d’équipe n’est nécessaire dans l’application.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
             const SizedBox(height: 16),
             Row(
@@ -434,9 +372,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                       SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                       SizedBox(width: 12),
                       Expanded(
@@ -490,24 +426,15 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                       if (_detections.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         ..._detections.asMap().entries.map((entry) {
-                          final index = entry.key;
                           final detection = entry.value;
-                          final owner = _ballOwners[index];
-                          final ownerText =
-                              detection.type == PetanqueObjectType.boule
-                                  ? switch (owner) {
-                                      _BallOwner.teamA => ' • A',
-                                      _BallOwner.teamB => ' • B',
-                                      _BallOwner.unknown => ' • ?',
-                                      null => '',
-                                    }
-                                  : '';
+                          final rank = _ballRanks[entry.key];
+                          final rankText = rank == null ? '' : ' • rang $rank';
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: Text(
                               '${detection.label} — '
                               '${(detection.confidence * 100).toStringAsFixed(1)} %'
-                              '$ownerText',
+                              '$rankText',
                             ),
                           );
                         }),
@@ -531,43 +458,99 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     );
   }
 }
-class _PointAnalysisCard extends StatelessWidget {
-  const _PointAnalysisCard({required this.result});
-  final _PointAnalysisResult result;
+
+class _JackValidationCard extends StatelessWidget {
+  const _JackValidationCard({
+    required this.jackPosition,
+    required this.jackConfirmed,
+    required this.jackWasDetected,
+    required this.onConfirm,
+    required this.onReposition,
+  });
+
+  final Offset? jackPosition;
+  final bool jackConfirmed;
+  final bool jackWasDetected;
+  final VoidCallback onConfirm;
+  final VoidCallback onReposition;
+
   @override
   Widget build(BuildContext context) {
+    if (jackPosition == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.touch_app),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Cochonnet non détecté. Zoomez si nécessaire puis touchez '
+                  'son centre sur la photo.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (jackConfirmed) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.check_circle_outline),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Cochonnet confirmé',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onReposition,
+                icon: const Icon(Icons.my_location),
+                label: const Text('Repositionner le cochonnet'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              result.uncertain ? Icons.warning_amber : Icons.flag,
+            Text(
+              jackWasDetected
+                  ? 'Cochonnet détecté : est-ce bien lui ?'
+                  : 'Position manuelle du cochonnet',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    result.uncertain
-                        ? 'Analyse incertaine'
-                        : 'Estimation du point',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(result.message),
-                  if (!result.uncertain) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Correction locale de perspective active. Les distances restent '
-                      'expérimentales : mesure manuelle si le cas est serré.',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ],
-              ),
+            const SizedBox(height: 6),
+            Text(
+              jackWasDetected
+                  ? 'Vérifiez le viseur C sur la photo. Si sa position est mauvaise, touchez directement le vrai cochonnet.'
+                  : 'Vérifiez le viseur C. Vous pouvez retoucher la photo pour ajuster sa position.',
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onConfirm,
+              icon: const Icon(Icons.check),
+              label: const Text('Confirmer le cochonnet'),
             ),
           ],
         ),
@@ -575,38 +558,24 @@ class _PointAnalysisCard extends StatelessWidget {
     );
   }
 }
-class _TeamLegend extends StatelessWidget {
-  const _TeamLegend({
-    required this.teamAName,
-    required this.teamBName,
-  });
-  final String teamAName;
-  final String teamBName;
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 12,
-      runSpacing: 6,
-      children: [
-        Text('A = $teamAName'),
-        Text('B = $teamBName'),
-        const Text('? = indéterminée'),
-      ],
-    );
-  }
-}
+
 class _DetectionImage extends StatelessWidget {
   const _DetectionImage({
     required this.imageFile,
     required this.detections,
-    required this.ballOwners,
-    required this.onBallTap,
+    required this.jackPosition,
+    required this.jackConfirmed,
+    required this.ballRanks,
+    required this.onJackTap,
   });
+
   final File imageFile;
   final List<PetanqueDetection> detections;
-  final Map<int, _BallOwner> ballOwners;
-  final ValueChanged<int> onBallTap;
+  final Offset? jackPosition;
+  final bool jackConfirmed;
+  final Map<int, int> ballRanks;
+  final ValueChanged<Offset> onJackTap;
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -617,16 +586,15 @@ class _DetectionImage extends StatelessWidget {
             future: _getImageSize(imageFile),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
-                return Image.file(
-                  imageFile,
-                  fit: BoxFit.contain,
-                );
+                return Image.file(imageFile, fit: BoxFit.contain);
               }
+
               final imageSize = snapshot.data!;
               final displayWidth = constraints.maxWidth;
               final displayHeight =
                   displayWidth * imageSize.height / imageSize.width;
               final displaySize = Size(displayWidth, displayHeight);
+
               return SizedBox(
                 width: displayWidth,
                 height: displayHeight,
@@ -644,9 +612,12 @@ class _DetectionImage extends StatelessWidget {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTapUp: (details) {
-                      _handleBallTap(
-                        details.localPosition,
-                        displaySize,
+                      final position = details.localPosition;
+                      onJackTap(
+                        Offset(
+                          (position.dx / displaySize.width).clamp(0.0, 1.0),
+                          (position.dy / displaySize.height).clamp(0.0, 1.0),
+                        ),
                       );
                     },
                     child: SizedBox(
@@ -655,15 +626,14 @@ class _DetectionImage extends StatelessWidget {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          Image.file(
-                            imageFile,
-                            fit: BoxFit.fill,
-                          ),
+                          Image.file(imageFile, fit: BoxFit.fill),
                           IgnorePointer(
                             child: CustomPaint(
                               painter: _DetectionPainter(
                                 detections: detections,
-                                ballOwners: ballOwners,
+                                jackPosition: jackPosition,
+                                jackConfirmed: jackConfirmed,
+                                ballRanks: ballRanks,
                               ),
                             ),
                           ),
@@ -679,34 +649,7 @@ class _DetectionImage extends StatelessWidget {
       ),
     );
   }
-  void _handleBallTap(Offset position, Size size) {
-    int? bestIndex;
-    double? bestDistance;
-    for (final entry in detections.asMap().entries) {
-      final index = entry.key;
-      final detection = entry.value;
-      if (detection.type != PetanqueObjectType.boule) continue;
-      final center = Offset(
-        ((detection.left + detection.right) / 2) * size.width,
-        ((detection.top + detection.bottom) / 2) * size.height,
-      );
-      final boxWidth =
-          (detection.right - detection.left) * size.width;
-      final boxHeight =
-          (detection.bottom - detection.top) * size.height;
-      final touchRadius =
-          (boxWidth > boxHeight ? boxWidth : boxHeight).clamp(22.0, 60.0);
-      final distance = (position - center).distance;
-      if (distance <= touchRadius &&
-          (bestDistance == null || distance < bestDistance)) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    }
-    if (bestIndex != null) {
-      onBallTap(bestIndex);
-    }
-  }
+
   Future<Size> _getImageSize(File file) async {
     final decoded =
         await decodeImageFromList(await file.readAsBytes());
@@ -716,106 +659,195 @@ class _DetectionImage extends StatelessWidget {
     );
   }
 }
+
 class _DetectionPainter extends CustomPainter {
   const _DetectionPainter({
     required this.detections,
-    required this.ballOwners,
+    required this.jackPosition,
+    required this.jackConfirmed,
+    required this.ballRanks,
   });
+
   final List<PetanqueDetection> detections;
-  final Map<int, _BallOwner> ballOwners;
+  final Offset? jackPosition;
+  final bool jackConfirmed;
+  final Map<int, int> ballRanks;
+
   @override
   void paint(Canvas canvas, Size size) {
     for (final entry in detections.asMap().entries) {
-      final index = entry.key;
       final detection = entry.value;
-      final owner = ballOwners[index];
+
+      // Les détections de cochonnet brutes ne sont volontairement plus
+      // dessinées : un seul cochonnet de référence est affiché, celui que
+      // l'utilisateur doit confirmer ou qu'il a positionné manuellement.
+      if (detection.type == PetanqueObjectType.cochonnet) continue;
+
       final rect = Rect.fromLTRB(
         detection.left * size.width,
         detection.top * size.height,
         detection.right * size.width,
         detection.bottom * size.height,
       );
+
+      final rank = ballRanks[entry.key];
+      final color = rank == null
+          ? Colors.green.shade700
+          : _rankColor(rank);
+
       final boxPaint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = owner == null ? 3 : 5
-        ..color = _colorForDetection(detection, owner);
+        ..strokeWidth = rank == null ? 3 : 4
+        ..color = color;
+
       canvas.drawRect(rect, boxPaint);
-      final label = detection.type == PetanqueObjectType.cochonnet
-          ? 'C'
-          : _ownerLabel(owner);
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      // Keep the marker deliberately tiny: it only identifies the object.
-      // Confidence values remain available in the diagnostic section below
-      // the image and no longer obscure neighbouring balls.
-      const horizontalPadding = 4.0;
-      const verticalPadding = 2.0;
-      final badgeWidth = textPainter.width + horizontalPadding * 2;
-      final badgeHeight = textPainter.height + verticalPadding * 2;
-      final labelLeft = rect.left.clamp(
-        0.0,
-        (size.width - badgeWidth).clamp(0.0, size.width),
-      );
-      final labelTop = rect.top.clamp(
-        0.0,
-        (size.height - badgeHeight).clamp(0.0, size.height),
-      );
-      final backgroundRect = Rect.fromLTWH(
-        labelLeft,
-        labelTop,
-        badgeWidth,
-        badgeHeight,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          backgroundRect,
-          const Radius.circular(3),
-        ),
-        Paint()..color = _colorForDetection(detection, owner),
-      );
-      textPainter.paint(
+
+      if (rank != null) {
+        _drawRankBadge(canvas, size, rect, rank, color);
+      }
+    }
+
+    final jack = jackPosition;
+    if (jack != null) {
+      _drawJackMarker(
         canvas,
-        Offset(
-          labelLeft + horizontalPadding,
-          labelTop + verticalPadding,
-        ),
+        Offset(jack.dx * size.width, jack.dy * size.height),
       );
     }
   }
-  String _ownerLabel(_BallOwner? owner) {
-    return switch (owner) {
-      _BallOwner.teamA => 'A',
-      _BallOwner.teamB => 'B',
-      _BallOwner.unknown => '?',
-      null => '•',
-    };
-  }
-  Color _colorForDetection(
-    PetanqueDetection detection,
-    _BallOwner? owner,
+
+  void _drawRankBadge(
+    Canvas canvas,
+    Size size,
+    Rect rect,
+    int rank,
+    Color color,
   ) {
-    if (detection.type == PetanqueObjectType.cochonnet) {
-      return Colors.orange.shade700;
-    }
-    return switch (owner) {
-      _BallOwner.teamA => Colors.blue.shade700,
-      _BallOwner.teamB => Colors.red.shade700,
-      _BallOwner.unknown => Colors.grey.shade700,
-      null => Colors.green.shade700,
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: '$rank',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final diameter = (textPainter.width > textPainter.height
+            ? textPainter.width
+            : textPainter.height) +
+        12;
+
+    final center = Offset(
+      (rect.left + rect.right) / 2,
+      (rect.top + rect.bottom) / 2,
+    );
+
+    final badgeCenter = Offset(
+      center.dx.clamp(diameter / 2, size.width - diameter / 2),
+      center.dy.clamp(diameter / 2, size.height - diameter / 2),
+    );
+
+    canvas.drawCircle(
+      badgeCenter,
+      diameter / 2,
+      Paint()..color = color,
+    );
+
+    canvas.drawCircle(
+      badgeCenter,
+      diameter / 2,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = Colors.white,
+    );
+
+    textPainter.paint(
+      canvas,
+      Offset(
+        badgeCenter.dx - textPainter.width / 2,
+        badgeCenter.dy - textPainter.height / 2,
+      ),
+    );
+  }
+
+  void _drawJackMarker(Canvas canvas, Offset point) {
+    final color = jackConfirmed
+        ? Colors.green.shade800
+        : Colors.orange.shade800;
+
+    const radius = 13.0;
+
+    canvas.drawCircle(
+      point,
+      radius + 3,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = Colors.white,
+    );
+
+    canvas.drawCircle(
+      point,
+      radius,
+      Paint()..color = color,
+    );
+
+    canvas.drawLine(
+      Offset(point.dx - 20, point.dy),
+      Offset(point.dx + 20, point.dy),
+      Paint()
+        ..strokeWidth = 2
+        ..color = Colors.white,
+    );
+    canvas.drawLine(
+      Offset(point.dx, point.dy - 20),
+      Offset(point.dx, point.dy + 20),
+      Paint()
+        ..strokeWidth = 2
+        ..color = Colors.white,
+    );
+
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: 'C',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    textPainter.paint(
+      canvas,
+      Offset(
+        point.dx - textPainter.width / 2,
+        point.dy - textPainter.height / 2,
+      ),
+    );
+  }
+
+  Color _rankColor(int rank) {
+    // Le numéro reste l'information principale. Les couleurs servent seulement
+    // à accélérer la lecture visuelle des premières positions.
+    return switch (rank) {
+      1 => Colors.red.shade700,
+      2 => Colors.orange.shade700,
+      3 => Colors.amber.shade800,
+      _ => Colors.blueGrey.shade700,
     };
   }
+
   @override
   bool shouldRepaint(covariant _DetectionPainter oldDelegate) {
     return oldDelegate.detections != detections ||
-        oldDelegate.ballOwners != ballOwners;
+        oldDelegate.jackPosition != jackPosition ||
+        oldDelegate.jackConfirmed != jackConfirmed ||
+        oldDelegate.ballRanks != ballRanks;
   }
 }
