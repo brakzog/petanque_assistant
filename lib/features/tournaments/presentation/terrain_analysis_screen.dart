@@ -51,6 +51,9 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   // detectionIndex -> rang (1 = boule la plus proche du cochonnet).
   Map<int, int> _ballRanks = {};
 
+  // Faux positifs masqués manuellement pendant l'analyse courante.
+  final Set<int> _ignoredBallIndices = {};
+
   Future<void> _takePhoto() async {
     await _pickImage(ImageSource.camera);
   }
@@ -150,6 +153,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     _jackConfirmed = false;
     _jackWasDetected = false;
     _ballRanks = {};
+    _ignoredBallIndices.clear();
   }
 
   void _removePhoto() {
@@ -204,6 +208,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     for (final entry in _detections.asMap().entries) {
       final detection = entry.value;
       if (detection.type != PetanqueObjectType.boule) continue;
+      if (_ignoredBallIndices.contains(entry.key)) continue;
 
       // Si V3 a classé le cochonnet comme une boule, la confirmation
       // utilisateur a priorité : cette détection est exclue du classement.
@@ -272,6 +277,135 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     return bestIndex;
   }
 
+  bool get _isProbablyWideView {
+    final balls = _detections
+        .where((d) => d.type == PetanqueObjectType.boule)
+        .toList();
+    if (balls.length < 3) return false;
+
+    final apparentSizes = balls
+        .map((d) {
+          final width = (d.right - d.left).abs();
+          final height = (d.bottom - d.top).abs();
+          return width > height ? width : height;
+        })
+        .toList()
+      ..sort();
+
+    final medianSize = apparentSizes[apparentSizes.length ~/ 2];
+    final centers = balls
+        .map(
+          (d) => Offset(
+            (d.left + d.right) / 2,
+            (d.top + d.bottom) / 2,
+          ),
+        )
+        .toList();
+
+    final minX = centers.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+    final maxX = centers.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+    final minY = centers.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+    final maxY = centers.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+
+    // Heuristique volontairement prudente et non bloquante : des boules très
+    // petites ou très dispersées indiquent souvent une vue générale de partie
+    // plutôt qu'un cadrage centré sur le point.
+    return medianSize < 0.055 ||
+        (maxX - minX) > 0.78 ||
+        (maxY - minY) > 0.78;
+  }
+
+  Future<void> _handleImageTap(Offset normalizedPosition) async {
+    if (!_jackConfirmed) {
+      _setJackPosition(normalizedPosition);
+      return;
+    }
+
+    final detectionIndex = _findBallDetectionAtPosition(normalizedPosition);
+    if (detectionIndex == null || _ignoredBallIndices.contains(detectionIndex)) {
+      return;
+    }
+
+    final shouldIgnore = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Fausse détection ?',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Si cet objet n’est pas une boule utile pour le point, vous pouvez l’ignorer. '
+                'Le classement sera recalculé immédiatement.',
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.visibility_off),
+                label: const Text('Ignorer cette détection'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || shouldIgnore != true) return;
+    setState(() {
+      _ignoredBallIndices.add(detectionIndex);
+      _computeBallRanking();
+    });
+  }
+
+  int? _findBallDetectionAtPosition(Offset position) {
+    int? bestIndex;
+    double? bestDistance;
+
+    for (final entry in _detections.asMap().entries) {
+      if (_ignoredBallIndices.contains(entry.key)) continue;
+      final detection = entry.value;
+      if (detection.type != PetanqueObjectType.boule) continue;
+
+      final center = Offset(
+        (detection.left + detection.right) / 2,
+        (detection.top + detection.bottom) / 2,
+      );
+      final width = (detection.right - detection.left).abs();
+      final height = (detection.bottom - detection.top).abs();
+      final radius = (width > height ? width : height) / 2;
+      final distance = (position - center).distance;
+      final inside = position.dx >= detection.left &&
+          position.dx <= detection.right &&
+          position.dy >= detection.top &&
+          position.dy <= detection.bottom;
+
+      if (!inside && distance > radius * 1.35) continue;
+      if (bestDistance == null || distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = entry.key;
+      }
+    }
+    return bestIndex;
+  }
+
+  void _restoreIgnoredBalls() {
+    setState(() {
+      _ignoredBallIndices.clear();
+      if (_jackConfirmed) _computeBallRanking();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final bouleCount = _detections
@@ -324,15 +458,37 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
               jackPosition: _jackPosition,
               jackConfirmed: _jackConfirmed,
               ballRanks: _ballRanks,
-              onJackTap: _setJackPosition,
+              ignoredBallIndices: _ignoredBallIndices,
+              onImageTap: _handleImageTap,
             ),
             const SizedBox(height: 8),
             Text(
               _jackConfirmed
-                  ? 'Pincez pour zoomer • Le cochonnet est confirmé'
+                  ? 'Pincez pour zoomer • Touchez une fausse boule pour l’ignorer'
                   : 'Pincez pour zoomer • Touchez le vrai cochonnet pour corriger sa position',
               textAlign: TextAlign.center,
             ),
+            if (!_analyzing && _isProbablyWideView) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.photo_size_select_large),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Vue possiblement trop large. Pour un classement plus fiable, '
+                          'rapprochez-vous du cochonnet et cadrez surtout les boules susceptibles de prendre le point.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _JackValidationCard(
               jackPosition: _jackPosition,
@@ -375,6 +531,16 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                       ),
                     ],
                   ),
+                ),
+              ),
+            ],
+            if (_ignoredBallIndices.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _restoreIgnoredBalls,
+                icon: const Icon(Icons.restore),
+                label: Text(
+                  'Réafficher ${_ignoredBallIndices.length} détection${_ignoredBallIndices.length > 1 ? 's' : ''} ignorée${_ignoredBallIndices.length > 1 ? 's' : ''}',
                 ),
               ),
             ],
@@ -473,13 +639,14 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
                         ..._detections.asMap().entries.map((entry) {
                           final detection = entry.value;
                           final rank = _ballRanks[entry.key];
+                          final ignored = _ignoredBallIndices.contains(entry.key);
                           final rankText = rank == null ? '' : ' • rang $rank';
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: Text(
                               '${detection.label} — '
                               '${(detection.confidence * 100).toStringAsFixed(1)} %'
-                              '$rankText',
+                              '$rankText${ignored ? ' • ignorée' : ''}',
                             ),
                           );
                         }),
@@ -611,7 +778,8 @@ class _DetectionImage extends StatelessWidget {
     required this.jackPosition,
     required this.jackConfirmed,
     required this.ballRanks,
-    required this.onJackTap,
+    required this.ignoredBallIndices,
+    required this.onImageTap,
   });
 
   final File imageFile;
@@ -619,7 +787,8 @@ class _DetectionImage extends StatelessWidget {
   final Offset? jackPosition;
   final bool jackConfirmed;
   final Map<int, int> ballRanks;
-  final ValueChanged<Offset> onJackTap;
+  final Set<int> ignoredBallIndices;
+  final ValueChanged<Offset> onImageTap;
 
   @override
   Widget build(BuildContext context) {
@@ -658,7 +827,7 @@ class _DetectionImage extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTapUp: (details) {
                       final position = details.localPosition;
-                      onJackTap(
+                      onImageTap(
                         Offset(
                           (position.dx / displaySize.width).clamp(0.0, 1.0),
                           (position.dy / displaySize.height).clamp(0.0, 1.0),
@@ -679,6 +848,7 @@ class _DetectionImage extends StatelessWidget {
                                 jackPosition: jackPosition,
                                 jackConfirmed: jackConfirmed,
                                 ballRanks: ballRanks,
+                                ignoredBallIndices: ignoredBallIndices,
                               ),
                             ),
                           ),
@@ -711,17 +881,20 @@ class _DetectionPainter extends CustomPainter {
     required this.jackPosition,
     required this.jackConfirmed,
     required this.ballRanks,
+    required this.ignoredBallIndices,
   });
 
   final List<PetanqueDetection> detections;
   final Offset? jackPosition;
   final bool jackConfirmed;
   final Map<int, int> ballRanks;
+  final Set<int> ignoredBallIndices;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final entry in detections.asMap().entries) {
       final detection = entry.value;
+      if (ignoredBallIndices.contains(entry.key)) continue;
 
       // Les détections de cochonnet brutes ne sont volontairement plus
       // dessinées : un seul cochonnet de référence est affiché, celui que
@@ -924,6 +1097,7 @@ class _DetectionPainter extends CustomPainter {
     return oldDelegate.detections != detections ||
         oldDelegate.jackPosition != jackPosition ||
         oldDelegate.jackConfirmed != jackConfirmed ||
-        oldDelegate.ballRanks != ballRanks;
+        oldDelegate.ballRanks != ballRanks ||
+        oldDelegate.ignoredBallIndices != ignoredBallIndices;
   }
 }
