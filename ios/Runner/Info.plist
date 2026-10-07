@@ -50,6 +50,9 @@
 	<key>NSCameraUsageDescription</key>
 <string>La caméra permet de photographier les boules de pétanque pour les identifier pendant les parties.</string>
 
+<key>NSMotionUsageDescription</key>
+<string>L’inclinaison du téléphone permet d’améliorer la précision du classement des boules.</string>
+
 <key>NSPhotoLibraryUsageDescription</key>
 <string>La photothèque permet de sélectionner des photos de référence des boules de pétanque.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

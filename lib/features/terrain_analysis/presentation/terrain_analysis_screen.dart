@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../domain/team.dart';
 import '../../tournaments/services/petanque_detector.dart';
+import 'petanque_camera_screen.dart';
 
 class TerrainAnalysisScreen extends StatefulWidget {
   const TerrainAnalysisScreen({
@@ -51,9 +52,46 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
   Map<int, int> _ballRanks = {};
   List<_RankedBall> _rankedBalls = [];
   int? _jackBallDetectionIndex;
+  bool _guidedCapture = false;
+  double? _captureTiltDegrees;
+  double _imageAspectRatio = 1.0;
 
-  Future<void> _takePhoto() async => _pickImage(ImageSource.camera);
-  Future<void> _choosePhoto() async => _pickImage(ImageSource.gallery);
+  Future<void> _takePhoto() async {
+    if (_pickingImage || _analyzing) return;
+    final result = await Navigator.of(context).push<PetanqueCameraResult>(
+      MaterialPageRoute(builder: (_) => const PetanqueCameraScreen()),
+    );
+    if (!mounted || result == null) return;
+    await _useCapturedPhoto(result);
+  }
+
+  Future<void> _useCapturedPhoto(PetanqueCameraResult result) async {
+    setState(() {
+      _pickingImage = true;
+      _analysisError = null;
+    });
+    try {
+      final normalized = await _normalizeOrientation(result.image);
+      if (!mounted) return;
+      setState(() {
+        _selectedImage = normalized;
+        _guidedCapture = true;
+        _captureTiltDegrees = result.tiltDegrees;
+        _detections = [];
+        _resetJack();
+      });
+      await _analyzeImage(normalized);
+    } catch (e) {
+      if (mounted) setState(() => _analysisError = e.toString());
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+  Future<void> _choosePhoto() async {
+    _guidedCapture = false;
+    _captureTiltDegrees = null;
+    await _pickImage(ImageSource.gallery);
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     if (_pickingImage || _analyzing) return;
@@ -97,6 +135,7 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     if (decoded == null) return source;
 
     final oriented = img.bakeOrientation(decoded);
+    _imageAspectRatio = oriented.width / oriented.height;
     final directory = await getTemporaryDirectory();
     final file = File(
       p.join(
@@ -169,6 +208,8 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     if (_analyzing) return;
     setState(() {
       _selectedImage = null;
+      _guidedCapture = false;
+      _captureTiltDegrees = null;
       _detections = [];
       _analysisError = null;
       _resetJack();
@@ -242,10 +283,16 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
     return bestIndex;
   }
 
-  Offset _groundPoint(PetanqueDetection d) => Offset(
-        ((d.left + d.right) / 2).clamp(0.0, 1.0),
-        d.bottom.clamp(0.0, 1.0),
+  Offset _groundPoint(PetanqueDetection d) {
+    final x = ((d.left + d.right) / 2).clamp(0.0, 1.0);
+    if (_guidedCapture) {
+      return Offset(
+        x,
+        ((d.top + d.bottom) / 2).clamp(0.0, 1.0),
       );
+    }
+    return Offset(x, d.bottom.clamp(0.0, 1.0));
+  }
 
   double _apparentDiameter(PetanqueDetection d) {
     final w = (d.right - d.left).abs();
@@ -265,15 +312,29 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
       if (entry.key == _jackBallDetectionIndex) continue;
 
       final point = _groundPoint(d);
-      final imageDistance = (point - jack).distance;
 
-      // Première correction de perspective exploitable sans calibration
-      // métrique : une boule lointaine apparaît plus petite. On exprime donc
-      // le déplacement en diamètres apparents de boule plutôt qu'en pixels.
-      // Cela compense l'échelle avec la profondeur, mais ne prétend PAS donner
-      // une distance physique en cm.
-      final correctedDistance =
-          imageDistance / math.max(_apparentDiameter(d), 1e-6);
+      double correctedDistance;
+      if (_guidedCapture) {
+        // La caméra guidée n'autorise la prise que téléphone quasi parallèle
+        // au terrain. Dans cette configuration, le plan image est quasi
+        // parallèle au plan du sol : une distance 2D corrigée du ratio de
+        // l'image conserve directement l'ordre des distances sur le terrain.
+        //
+        // x et y sont normalisés 0..1 ; multiplier x par le ratio largeur /
+        // hauteur remet les deux axes dans la même unité image.
+        final image = _selectedImage;
+        if (image == null) continue;
+        final dx = point.dx - jack.dx;
+        final dy = point.dy - jack.dy;
+        final dxAspect = dx * _imageAspectRatio;
+        correctedDistance = math.sqrt(dxAspect * dxAspect + dy * dy);
+      } else {
+        // Galerie / ancienne photo : on n'a pas l'inclinaison au déclenchement.
+        // On conserve le fallback historique par diamètre apparent.
+        final imageDistance = (point - jack).distance;
+        correctedDistance =
+            imageDistance / math.max(_apparentDiameter(d), 1e-6);
+      }
 
       ranked.add(
         _RankedBall(
@@ -357,6 +418,34 @@ class _TerrainAnalysisScreenState extends State<TerrainAnalysisScreen> {
               onJackTap: _setJackPosition,
             ),
             const SizedBox(height: 8),
+            if (_guidedCapture && _captureTiltDegrees != null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.screen_rotation_alt),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Prise guidée • inclinaison ${_captureTiltDegrees!.toStringAsFixed(1)}° • géométrie terrain activée',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ] else ...[
+              const _WarningCard(
+                icon: Icons.photo_library_outlined,
+                title: 'Photo de galerie',
+                message:
+                    'L’inclinaison au déclenchement est inconnue : classement en mode estimé.',
+              ),
+              const SizedBox(height: 8),
+            ],
             Text(
               _jackConfirmed
                   ? 'Pincez pour zoomer • Le cochonnet est confirmé'
