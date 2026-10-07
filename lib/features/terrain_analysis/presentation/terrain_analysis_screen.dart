@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../domain/team.dart';
-import '../services/petanque_detector.dart';
+import '../../tournaments/services/petanque_detector.dart';
 
 class TerrainAnalysisScreen extends StatefulWidget {
   const TerrainAnalysisScreen({
