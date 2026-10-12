@@ -64,6 +64,15 @@ class _PetanqueCameraScreenState extends State<PetanqueCameraScreen>
 
   double? _tiltDegrees;
 
+double _zoomLevel = 1.0;
+double _minZoomLevel = 1.0;
+double _maxZoomLevel = 1.0;
+double _zoomLevelOnScaleStart = 1.0;
+
+bool _initializing = true;
+bool _takingPicture = false;
+String? _error;
+
   bool _initializing = true;
 
   bool _takingPicture = false;
@@ -180,6 +189,10 @@ class _PetanqueCameraScreenState extends State<PetanqueCameraScreen>
 
       await controller.setFlashMode(FlashMode.off);
 
+      final minZoom = await controller.getMinZoomLevel();
+final maxZoom = await controller.getMaxZoomLevel();
+await controller.setZoomLevel(minZoom);
+
 
 
       if (!mounted) {
@@ -193,12 +206,13 @@ class _PetanqueCameraScreenState extends State<PetanqueCameraScreen>
 
 
       setState(() {
-
-        _controller = controller;
-
-        _initializing = false;
-
-      });
+  _controller = controller;
+  _minZoomLevel = minZoom;
+  _maxZoomLevel = maxZoom;
+  _zoomLevel = minZoom;
+  _zoomLevelOnScaleStart = minZoom;
+  _initializing = false;
+});
 
     } catch (e) {
 
