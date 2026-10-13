@@ -69,9 +69,6 @@ double _minZoomLevel = 1.0;
 double _maxZoomLevel = 1.0;
 double _zoomLevelOnScaleStart = 1.0;
 
-bool _initializing = true;
-bool _takingPicture = false;
-String? _error;
 
   bool _initializing = true;
 
