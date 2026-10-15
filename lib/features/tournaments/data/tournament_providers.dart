@@ -11,6 +11,7 @@ import 'match_repository.dart';
 import 'petanque_ball_photo_repository.dart';
 import 'petanque_ball_repository.dart';
 import 'player_repository.dart';
+import 'predefined_teams_service.dart';
 import 'repechage_playoff_repository.dart';
 import 'repechage_service.dart';
 import 'roster_service.dart';
@@ -102,6 +103,15 @@ final rosterServiceProvider = Provider<RosterService>(
     teamRepository: ref.watch(teamRepositoryProvider),
     ballRepository: ref.watch(petanqueBallRepositoryProvider),
     teamGenerator: ref.watch(teamGeneratorProvider),
+    newId: const Uuid().v4,
+  ),
+);
+
+final predefinedTeamsServiceProvider = Provider<PredefinedTeamsService>(
+  (ref) => PredefinedTeamsService(
+    transactions: ref.watch(transactionRunnerProvider),
+    playerRepository: ref.watch(playerRepositoryProvider),
+    teamRepository: ref.watch(teamRepositoryProvider),
     newId: const Uuid().v4,
   ),
 );
