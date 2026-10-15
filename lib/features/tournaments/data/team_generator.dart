@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import '../../../domain/petanque_format_rules.dart';
 import '../../../domain/player.dart';
 import '../../../domain/team.dart';
 import '../../../domain/tournament.dart';
@@ -11,7 +12,7 @@ class TeamGenerator {
     required Tournament tournament,
     required List<Player> players,
   }) {
-    final playersPerTeam = _playersPerTeam(tournament.format);
+    final playersPerTeam = tournament.format.playersPerTeam;
 
     if (players.isEmpty) {
       throw ArgumentError('Aucun joueur inscrit.');
@@ -49,16 +50,5 @@ class TeamGenerator {
     }
 
     return teams;
-  }
-
-  int _playersPerTeam(PetanqueFormat format) {
-    switch (format) {
-      case PetanqueFormat.singles:
-        return 1;
-      case PetanqueFormat.doubles:
-        return 2;
-      case PetanqueFormat.triples:
-        return 3;
-    }
   }
 }

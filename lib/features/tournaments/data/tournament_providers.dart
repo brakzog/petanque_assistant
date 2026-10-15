@@ -13,6 +13,7 @@ import 'petanque_ball_repository.dart';
 import 'player_repository.dart';
 import 'repechage_playoff_repository.dart';
 import 'repechage_service.dart';
+import 'roster_service.dart';
 import 'team_generator.dart';
 import 'team_repository.dart';
 import 'tournament_progression_service.dart';
@@ -92,5 +93,15 @@ final bracketLoaderProvider = Provider<BracketLoader>(
     playoffRepository: ref.watch(repechagePlayoffRepositoryProvider),
     progressionService: ref.watch(tournamentProgressionServiceProvider),
     bracketGenerator: ref.watch(bracketGeneratorProvider),
+  ),
+);
+
+final rosterServiceProvider = Provider<RosterService>(
+  (ref) => RosterService(
+    playerRepository: ref.watch(playerRepositoryProvider),
+    teamRepository: ref.watch(teamRepositoryProvider),
+    ballRepository: ref.watch(petanqueBallRepositoryProvider),
+    teamGenerator: ref.watch(teamGeneratorProvider),
+    newId: const Uuid().v4,
   ),
 );
