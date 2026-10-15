@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/database/database_providers.dart';
 import '../domain/match_scorer.dart';
 import 'bracket_generator.dart';
+import 'bracket_loader.dart';
 import 'end_repository.dart';
 import 'match_end_recorder.dart';
 import 'match_repository.dart';
@@ -81,5 +82,15 @@ final matchEndRecorderProvider = Provider<MatchEndRecorder>(
     scorer: ref.watch(matchScorerProvider),
     newId: const Uuid().v4,
     now: DateTime.now,
+  ),
+);
+
+final bracketLoaderProvider = Provider<BracketLoader>(
+  (ref) => BracketLoader(
+    teamRepository: ref.watch(teamRepositoryProvider),
+    matchRepository: ref.watch(matchRepositoryProvider),
+    playoffRepository: ref.watch(repechagePlayoffRepositoryProvider),
+    progressionService: ref.watch(tournamentProgressionServiceProvider),
+    bracketGenerator: ref.watch(bracketGeneratorProvider),
   ),
 );
