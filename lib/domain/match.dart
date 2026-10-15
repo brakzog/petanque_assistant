@@ -1,13 +1,6 @@
-enum MatchStatus {
-  pending,
-  inProgress,
-  finished,
-}
+enum MatchStatus { pending, inProgress, finished }
 
-enum MatchType {
-  tournament,
-  repechagePlayoff,
-}
+enum MatchType { tournament, repechagePlayoff }
 
 class Match {
   final String id;
@@ -47,7 +40,7 @@ class Match {
 
   bool get isBye =>
       (teamAId != null && teamBId == null) ||
-          (teamAId == null && teamBId != null);
+      (teamAId == null && teamBId != null);
 
   bool get isFinished => status == MatchStatus.finished;
 
@@ -64,6 +57,7 @@ class Match {
     MatchStatus? status,
     String? winnerTeamId,
     MatchType? type,
+    bool clearWinner = false,
   }) {
     return Match(
       id: id ?? this.id,
@@ -76,7 +70,7 @@ class Match {
       teamAScore: teamAScore ?? this.teamAScore,
       teamBScore: teamBScore ?? this.teamBScore,
       status: status ?? this.status,
-      winnerTeamId: winnerTeamId ?? this.winnerTeamId,
+      winnerTeamId: clearWinner ? null : winnerTeamId ?? this.winnerTeamId,
       type: type ?? this.type,
     );
   }

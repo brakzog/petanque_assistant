@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/database/database_providers.dart';
+import '../domain/match_scorer.dart';
 import 'bracket_generator.dart';
 import 'end_repository.dart';
+import 'match_end_recorder.dart';
 import 'match_repository.dart';
 import 'petanque_ball_photo_repository.dart';
 import 'petanque_ball_repository.dart';
@@ -67,3 +70,16 @@ final tournamentProgressionServiceProvider =
         repechageService: ref.watch(repechageServiceProvider),
       ),
     );
+
+final matchScorerProvider = Provider<MatchScorer>((ref) => const MatchScorer());
+
+final matchEndRecorderProvider = Provider<MatchEndRecorder>(
+  (ref) => MatchEndRecorder(
+    transactions: ref.watch(transactionRunnerProvider),
+    matchRepository: ref.watch(matchRepositoryProvider),
+    endRepository: ref.watch(endRepositoryProvider),
+    scorer: ref.watch(matchScorerProvider),
+    newId: const Uuid().v4,
+    now: DateTime.now,
+  ),
+);
