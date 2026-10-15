@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
+import 'ball_detector.dart';
+
 enum PetanqueObjectType {
   boule,
   cochonnet,
@@ -38,7 +40,7 @@ class PetanqueDetection {
   }
 }
 
-class PetanqueDetector {
+class PetanqueDetector implements BallDetector {
   PetanqueDetector._();
 
   static final PetanqueDetector instance = PetanqueDetector._();
@@ -67,6 +69,7 @@ class PetanqueDetector {
     );
   }
 
+  @override
   Future<List<PetanqueDetection>> detect(String imagePath) async {
     await load();
 

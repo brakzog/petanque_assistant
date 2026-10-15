@@ -12,7 +12,7 @@ import '../data/end_repository.dart';
 import '../data/match_repository.dart';
 import '../../../domain/tournament.dart';
 
-import 'terrain_analysis_screen.dart';
+import '../../terrain_analysis/presentation/terrain_analysis_screen.dart';
 
 class MatchLiveScreen extends ConsumerStatefulWidget {
   final Match match;
@@ -266,10 +266,7 @@ FilledButton.icon(
   onPressed: () {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => TerrainAnalysisScreen(
-          teamA: widget.teamA,
-          teamB: widget.teamB,
-        ),
+        builder: (context) => const TerrainAnalysisScreen(),
       ),
     );
   },

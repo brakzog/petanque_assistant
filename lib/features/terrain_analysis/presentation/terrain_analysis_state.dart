@@ -1,0 +1,100 @@
+import 'dart:ui';
+
+import 'package:image_picker/image_picker.dart';
+
+import '../domain/ranked_ball.dart';
+import '../services/petanque_detector.dart';
+
+const Object _unset = Object();
+
+/// Immutable state of the terrain analysis screen.
+class TerrainAnalysisState {
+  const TerrainAnalysisState({
+    this.image,
+    this.imageAspectRatio = 1.0,
+    this.guidedCapture = false,
+    this.tiltDegrees,
+    this.pickingImage = false,
+    this.analyzing = false,
+    this.error,
+    this.detections = const [],
+    this.jackPosition,
+    this.jackConfirmed = false,
+    this.jackWasDetected = false,
+    this.jackBallIndex,
+    this.ignoredIndices = const {},
+    this.ranking = const [],
+  });
+
+  final XFile? image;
+  final double imageAspectRatio;
+
+  /// True when the photo comes from the guided camera (known tilt).
+  final bool guidedCapture;
+  final double? tiltDegrees;
+
+  final bool pickingImage;
+  final bool analyzing;
+  final String? error;
+
+  final List<PetanqueDetection> detections;
+
+  final Offset? jackPosition;
+  final bool jackConfirmed;
+  final bool jackWasDetected;
+
+  /// Boule detection that is actually the jack, excluded from the ranking.
+  final int? jackBallIndex;
+
+  /// Boule detections the user flagged as false positives.
+  final Set<int> ignoredIndices;
+
+  final List<RankedBall> ranking;
+
+  bool get isBusy => pickingImage || analyzing;
+
+  /// Detections that are neither drawn nor ranked.
+  Set<int> get hiddenIndices => {
+    ...ignoredIndices,
+    if (jackBallIndex != null) jackBallIndex!,
+  };
+
+  /// detectionIndex -> rank (1 = closest to the jack).
+  Map<int, int> get ballRanks => {
+    for (var i = 0; i < ranking.length; i++) ranking[i].detectionIndex: i + 1,
+  };
+
+  TerrainAnalysisState copyWith({
+    bool? pickingImage,
+    bool? analyzing,
+    Object? error = _unset,
+    List<PetanqueDetection>? detections,
+    Object? jackPosition = _unset,
+    bool? jackConfirmed,
+    bool? jackWasDetected,
+    Object? jackBallIndex = _unset,
+    Set<int>? ignoredIndices,
+    List<RankedBall>? ranking,
+  }) {
+    return TerrainAnalysisState(
+      image: image,
+      imageAspectRatio: imageAspectRatio,
+      guidedCapture: guidedCapture,
+      tiltDegrees: tiltDegrees,
+      pickingImage: pickingImage ?? this.pickingImage,
+      analyzing: analyzing ?? this.analyzing,
+      error: identical(error, _unset) ? this.error : error as String?,
+      detections: detections ?? this.detections,
+      jackPosition: identical(jackPosition, _unset)
+          ? this.jackPosition
+          : jackPosition as Offset?,
+      jackConfirmed: jackConfirmed ?? this.jackConfirmed,
+      jackWasDetected: jackWasDetected ?? this.jackWasDetected,
+      jackBallIndex: identical(jackBallIndex, _unset)
+          ? this.jackBallIndex
+          : jackBallIndex as int?,
+      ignoredIndices: ignoredIndices ?? this.ignoredIndices,
+      ranking: ranking ?? this.ranking,
+    );
+  }
+}
