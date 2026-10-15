@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/tournament.dart';
 import '../data/tournament_repository.dart';
 import 'tournament_create_screen.dart';
 import 'tournament_players_screen.dart';
-import '../data/match_repository.dart';
 import 'tournament_bracket_screen.dart';
 
 
-class TournamentListScreen extends StatefulWidget {
+class TournamentListScreen extends ConsumerStatefulWidget {
   const TournamentListScreen({super.key});
 
   @override
-  State<TournamentListScreen> createState() =>
+  ConsumerState<TournamentListScreen> createState() =>
       _TournamentListScreenState();
 }
 
-class _TournamentListScreenState extends State<TournamentListScreen> {
-  late final AppDatabase _database;
+class _TournamentListScreenState extends ConsumerState<TournamentListScreen> {
   late final TournamentRepository _repository;
 
   List<Tournament> _tournaments = [];
@@ -28,8 +27,7 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _repository = TournamentRepository(_database);
+    _repository = ref.read(tournamentRepositoryProvider);
 
     _loadTournaments();
   }
@@ -62,11 +60,6 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
     await _loadTournaments();
   }
 
-  @override
-  void dispose() {
-    _database.close();
-    super.dispose();
-  }
 
   String _formatLabel(PetanqueFormat format) {
     switch (format) {
@@ -147,14 +140,11 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
                 ],
               ),
               onTap: () async {
-                final database = AppDatabase();
-                final matchRepository = MatchRepository(database);
+                final matchRepository = ref.read(matchRepositoryProvider);
 
                 final matches = await matchRepository.getMatchesForTournament(
                   tournament.id,
                 );
-
-                await database.close();
 
                 if (!context.mounted) {
                   return;

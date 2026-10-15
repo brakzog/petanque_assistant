@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/database/database_providers.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/end.dart';
 import '../../../domain/match.dart';
 import '../../../domain/team.dart';
@@ -11,7 +14,7 @@ import '../../../domain/tournament.dart';
 
 import 'terrain_analysis_screen.dart';
 
-class MatchLiveScreen extends StatefulWidget {
+class MatchLiveScreen extends ConsumerStatefulWidget {
   final Match match;
   final Team teamA;
   final Team teamB;
@@ -26,10 +29,10 @@ class MatchLiveScreen extends StatefulWidget {
   });
 
   @override
-  State<MatchLiveScreen> createState() => _MatchLiveScreenState();
+  ConsumerState<MatchLiveScreen> createState() => _MatchLiveScreenState();
 }
 
-class _MatchLiveScreenState extends State<MatchLiveScreen> {
+class _MatchLiveScreenState extends ConsumerState<MatchLiveScreen> {
   late final AppDatabase _database;
   late final MatchRepository _matchRepository;
   late final EndRepository _endRepository;
@@ -43,9 +46,9 @@ class _MatchLiveScreenState extends State<MatchLiveScreen> {
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _matchRepository = MatchRepository(_database);
-    _endRepository = EndRepository(_database);
+    _database = ref.read(appDatabaseProvider);
+    _matchRepository = ref.read(matchRepositoryProvider);
+    _endRepository = ref.read(endRepositoryProvider);
 
     _match = widget.match;
 
@@ -177,12 +180,6 @@ class _MatchLiveScreenState extends State<MatchLiveScreen> {
     }
 
     return widget.teamB.name;
-  }
-
-  @override
-  void dispose() {
-    _database.close();
-    super.dispose();
   }
 
   @override

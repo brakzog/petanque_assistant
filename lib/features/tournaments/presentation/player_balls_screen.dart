@@ -1,15 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/player.dart';
 import '../data/petanque_ball_photo_repository.dart';
 import '../data/petanque_ball_repository.dart';
 
-class PlayerBallsScreen extends StatefulWidget {
+class PlayerBallsScreen extends ConsumerStatefulWidget {
   final Player player;
 
   const PlayerBallsScreen({
@@ -18,13 +19,12 @@ class PlayerBallsScreen extends StatefulWidget {
   });
 
   @override
-  State<PlayerBallsScreen> createState() =>
+  ConsumerState<PlayerBallsScreen> createState() =>
       _PlayerBallsScreenState();
 }
 
 class _PlayerBallsScreenState
-    extends State<PlayerBallsScreen> {
-  late final AppDatabase _database;
+    extends ConsumerState<PlayerBallsScreen> {
   late final PetanqueBallRepository _ballRepository;
   late final PetanqueBallPhotoRepository _photoRepository;
 
@@ -46,13 +46,11 @@ class _PlayerBallsScreenState
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-
     _ballRepository =
-        PetanqueBallRepository(_database);
+        ref.read(petanqueBallRepositoryProvider);
 
     _photoRepository =
-        PetanqueBallPhotoRepository(_database);
+        ref.read(petanqueBallPhotoRepositoryProvider);
 
     _load();
   }
@@ -363,8 +361,6 @@ class _PlayerBallsScreenState
     _modelController.dispose();
     _diameterController.dispose();
     _weightController.dispose();
-
-    _database.close();
 
     super.dispose();
   }

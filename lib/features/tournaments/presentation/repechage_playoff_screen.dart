@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/repechage_playoff.dart';
 import '../../../domain/team.dart';
 import '../data/repechage_playoff_repository.dart';
 import '../data/team_repository.dart';
 
-class RepechagePlayoffScreen extends StatefulWidget {
+class RepechagePlayoffScreen extends ConsumerStatefulWidget {
   final RepechagePlayoff playoff;
 
   const RepechagePlayoffScreen({
@@ -15,13 +16,12 @@ class RepechagePlayoffScreen extends StatefulWidget {
   });
 
   @override
-  State<RepechagePlayoffScreen> createState() =>
+  ConsumerState<RepechagePlayoffScreen> createState() =>
       _RepechagePlayoffScreenState();
 }
 
 class _RepechagePlayoffScreenState
-    extends State<RepechagePlayoffScreen> {
-  late final AppDatabase _database;
+    extends ConsumerState<RepechagePlayoffScreen> {
   late final TeamRepository _teamRepository;
   late final RepechagePlayoffRepository _playoffRepository;
 
@@ -36,10 +36,9 @@ class _RepechagePlayoffScreenState
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _teamRepository = TeamRepository(_database);
+    _teamRepository = ref.read(teamRepositoryProvider);
     _playoffRepository =
-        RepechagePlayoffRepository(_database);
+        ref.read(repechagePlayoffRepositoryProvider);
 
     _loadData();
   }
@@ -130,12 +129,6 @@ class _RepechagePlayoffScreenState
     return team.players
         .map((player) => player.name)
         .join(' + ');
-  }
-
-  @override
-  void dispose() {
-    _database.close();
-    super.dispose();
   }
 
   @override

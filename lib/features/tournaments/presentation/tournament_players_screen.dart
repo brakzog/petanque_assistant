@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/player.dart';
 import '../../../domain/team.dart';
 import '../../../domain/tournament.dart';
@@ -13,7 +14,7 @@ import 'player_balls_screen.dart';
 import 'predefined_teams_screen.dart';
 import 'tournament_bracket_screen.dart';
 
-class TournamentPlayersScreen extends StatefulWidget {
+class TournamentPlayersScreen extends ConsumerStatefulWidget {
   final Tournament tournament;
 
   const TournamentPlayersScreen({
@@ -22,17 +23,16 @@ class TournamentPlayersScreen extends StatefulWidget {
   });
 
   @override
-  State<TournamentPlayersScreen> createState() =>
+  ConsumerState<TournamentPlayersScreen> createState() =>
       _TournamentPlayersScreenState();
 }
 
-class _TournamentPlayersScreenState extends State<TournamentPlayersScreen> {
-  late final AppDatabase _database;
+class _TournamentPlayersScreenState extends ConsumerState<TournamentPlayersScreen> {
   late final PlayerRepository _playerRepository;
   late final TeamRepository _teamRepository;
   late final PetanqueBallRepository _ballRepository;
 
-  final TeamGenerator _teamGenerator = const TeamGenerator();
+  late final TeamGenerator _teamGenerator;
   final _nameController = TextEditingController();
 
   List<Player> _players = [];
@@ -46,10 +46,10 @@ class _TournamentPlayersScreenState extends State<TournamentPlayersScreen> {
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _playerRepository = PlayerRepository(_database);
-    _teamRepository = TeamRepository(_database);
-    _ballRepository = PetanqueBallRepository(_database);
+    _playerRepository = ref.read(playerRepositoryProvider);
+    _teamRepository = ref.read(teamRepositoryProvider);
+    _ballRepository = ref.read(petanqueBallRepositoryProvider);
+    _teamGenerator = ref.read(teamGeneratorProvider);
 
     _loadData();
   }
@@ -247,7 +247,6 @@ class _TournamentPlayersScreenState extends State<TournamentPlayersScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _database.close();
     super.dispose();
   }
 

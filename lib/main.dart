@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
 
 void main() {
-  runApp(const _BootstrapApp());
+  runApp(const ProviderScope(child: _BootstrapApp()));
 }
 
 class _BootstrapApp extends StatefulWidget {

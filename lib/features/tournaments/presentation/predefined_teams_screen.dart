@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/player.dart';
 import '../../../domain/team.dart';
 import '../../../domain/tournament.dart';
 import '../data/player_repository.dart';
 import '../data/team_repository.dart';
 
-class PredefinedTeamsScreen extends StatefulWidget {
+class PredefinedTeamsScreen extends ConsumerStatefulWidget {
   final Tournament tournament;
 
   const PredefinedTeamsScreen({
@@ -17,12 +18,11 @@ class PredefinedTeamsScreen extends StatefulWidget {
   });
 
   @override
-  State<PredefinedTeamsScreen> createState() =>
+  ConsumerState<PredefinedTeamsScreen> createState() =>
       _PredefinedTeamsScreenState();
 }
 
-class _PredefinedTeamsScreenState extends State<PredefinedTeamsScreen> {
-  late final AppDatabase _database;
+class _PredefinedTeamsScreenState extends ConsumerState<PredefinedTeamsScreen> {
   late final PlayerRepository _playerRepository;
   late final TeamRepository _teamRepository;
 
@@ -37,9 +37,8 @@ class _PredefinedTeamsScreenState extends State<PredefinedTeamsScreen> {
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _playerRepository = PlayerRepository(_database);
-    _teamRepository = TeamRepository(_database);
+    _playerRepository = ref.read(playerRepositoryProvider);
+    _teamRepository = ref.read(teamRepositoryProvider);
 
     _loadData();
   }
@@ -207,12 +206,6 @@ class _PredefinedTeamsScreenState extends State<PredefinedTeamsScreen> {
     }
 
     Navigator.of(context).pop(true);
-  }
-
-  @override
-  void dispose() {
-    _database.close();
-    super.dispose();
   }
 
   @override

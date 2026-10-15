@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/database/app_database.dart';
+import '../data/tournament_providers.dart';
 import '../../../domain/match.dart';
 import '../../../domain/repechage_playoff.dart';
 import '../../../domain/team.dart';
@@ -14,7 +15,7 @@ import '../data/tournament_progression_service.dart';
 import 'match_live_screen.dart';
 import 'repechage_playoff_screen.dart';
 
-class TournamentBracketScreen extends StatefulWidget {
+class TournamentBracketScreen extends ConsumerStatefulWidget {
   final Tournament tournament;
 
   const TournamentBracketScreen({
@@ -23,18 +24,17 @@ class TournamentBracketScreen extends StatefulWidget {
   });
 
   @override
-  State<TournamentBracketScreen> createState() =>
+  ConsumerState<TournamentBracketScreen> createState() =>
       _TournamentBracketScreenState();
 }
 
-class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
-  late final AppDatabase _database;
+class _TournamentBracketScreenState extends ConsumerState<TournamentBracketScreen> {
   late final TeamRepository _teamRepository;
   late final MatchRepository _matchRepository;
   late final TournamentProgressionService _progressionService;
   late final RepechagePlayoffRepository _playoffRepository;
 
-  final BracketGenerator _bracketGenerator = const BracketGenerator();
+  late final BracketGenerator _bracketGenerator;
 
   TournamentProgressionResult? _progressionResult;
 
@@ -49,18 +49,13 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
   void initState() {
     super.initState();
 
-    _database = AppDatabase();
-    _teamRepository = TeamRepository(_database);
-    _matchRepository = MatchRepository(_database);
+    _teamRepository = ref.read(teamRepositoryProvider);
+    _matchRepository = ref.read(matchRepositoryProvider);
 
-    _playoffRepository = RepechagePlayoffRepository(
-      _database,
-    );
+    _playoffRepository = ref.read(repechagePlayoffRepositoryProvider);
 
-    _progressionService = TournamentProgressionService(
-      matchRepository: _matchRepository,
-      playoffRepository: _playoffRepository,
-    );
+    _progressionService = ref.read(tournamentProgressionServiceProvider);
+    _bracketGenerator = ref.read(bracketGeneratorProvider);
 
     _loadTournament();
   }
@@ -227,12 +222,6 @@ class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
     }
 
     return _findTeam(_finalMatch?.winnerTeamId);
-  }
-
-  @override
-  void dispose() {
-    _database.close();
-    super.dispose();
   }
 
   @override
