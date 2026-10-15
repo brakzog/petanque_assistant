@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/database_providers.dart';
 import '../domain/match_scorer.dart';
+import '../domain/tournament_factory.dart';
 import 'bracket_generator.dart';
 import 'bracket_loader.dart';
 import 'end_repository.dart';
@@ -114,4 +115,8 @@ final predefinedTeamsServiceProvider = Provider<PredefinedTeamsService>(
     teamRepository: ref.watch(teamRepositoryProvider),
     newId: const Uuid().v4,
   ),
+);
+
+final tournamentFactoryProvider = Provider<TournamentFactory>(
+  (ref) => TournamentFactory(newId: const Uuid().v4),
 );
