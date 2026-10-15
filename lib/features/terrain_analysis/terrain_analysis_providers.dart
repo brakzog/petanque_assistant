@@ -7,8 +7,11 @@ import 'data/photo_picker.dart';
 import 'domain/ball_ranker.dart';
 import 'domain/detection_locator.dart';
 import 'domain/framing_checker.dart';
+import 'domain/tilt_policy.dart';
+import 'services/back_camera_opener.dart';
 import 'services/ball_detector.dart';
 import 'services/petanque_detector.dart';
+import 'services/tilt_sensor.dart';
 
 final ballDetectorProvider = Provider<BallDetector>(
   (ref) => PetanqueDetector.instance,
@@ -32,4 +35,14 @@ final detectionLocatorProvider = Provider<DetectionLocator>(
 
 final framingCheckerProvider = Provider<FramingChecker>(
   (ref) => const FramingChecker(),
+);
+
+final tiltSensorProvider = Provider<TiltSensor>(
+  (ref) => const AccelerometerTiltSensor(),
+);
+
+final tiltPolicyProvider = Provider<TiltPolicy>((ref) => const TiltPolicy());
+
+final backCameraOpenerProvider = Provider<BackCameraOpener>(
+  (ref) => const BackCameraOpener(),
 );
