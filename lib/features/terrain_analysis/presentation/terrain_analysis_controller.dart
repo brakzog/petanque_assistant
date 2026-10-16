@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/media/media_providers.dart';
 import '../terrain_analysis_providers.dart';
 import 'terrain_analysis_state.dart';
 

@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/database_providers.dart';
 import '../domain/match_scorer.dart';
 import '../domain/tournament_factory.dart';
+import 'ball_photo_file_store.dart';
+import 'ball_photo_service.dart';
 import 'bracket_generator.dart';
 import 'bracket_loader.dart';
 import 'end_repository.dart';
@@ -119,4 +122,19 @@ final predefinedTeamsServiceProvider = Provider<PredefinedTeamsService>(
 
 final tournamentFactoryProvider = Provider<TournamentFactory>(
   (ref) => TournamentFactory(newId: const Uuid().v4),
+);
+
+final ballPhotoServiceProvider = Provider<BallPhotoService>(
+  (ref) => BallPhotoService(
+    repository: ref.watch(petanqueBallPhotoRepositoryProvider),
+    fileStore: const BallPhotoFileStore(
+      documentsDirectory: getApplicationDocumentsDirectory,
+    ),
+    newId: const Uuid().v4,
+    now: DateTime.now,
+  ),
+);
+
+final ballIdGeneratorProvider = Provider<String Function()>(
+  (ref) => const Uuid().v4,
 );
