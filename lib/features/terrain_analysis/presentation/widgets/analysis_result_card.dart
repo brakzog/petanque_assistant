@@ -13,6 +13,7 @@ class AnalysisResultCard extends StatelessWidget {
     required this.jackBallIndex,
     required this.ignoredIndices,
     required this.ballRanks,
+    required this.manualBallCount,
   });
 
   final bool analyzing;
@@ -21,6 +22,7 @@ class AnalysisResultCard extends StatelessWidget {
   final int? jackBallIndex;
   final Set<int> ignoredIndices;
   final Map<int, int> ballRanks;
+  final int manualBallCount;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +60,13 @@ class AnalysisResultCard extends StatelessWidget {
         .entries
         .where((entry) => entry.key != jackBallIndex)
         .toList();
-    final bouleCount = visible.where((entry) => entry.value.isBoule).length;
+    final detectedBouleCount = visible
+        .where(
+          (entry) =>
+              entry.value.isBoule && !ignoredIndices.contains(entry.key),
+        )
+        .length;
+    final bouleCount = detectedBouleCount + manualBallCount;
     final cochonnetCount = detections.where((d) => d.isCochonnet).length;
 
     return Card(
@@ -68,8 +76,7 @@ class AnalysisResultCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$bouleCount boule${bouleCount > 1 ? 's' : ''} '
-              'détectée${bouleCount > 1 ? 's' : ''}',
+              '$bouleCount boule${bouleCount > 1 ? 's' : ''} prise${bouleCount > 1 ? 's' : ''} en compte',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
@@ -78,7 +85,13 @@ class AnalysisResultCard extends StatelessWidget {
               'détecté${cochonnetCount > 1 ? 's' : ''}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            if (detections.isEmpty) ...[
+            if (manualBallCount > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '$manualBallCount ajoutée${manualBallCount > 1 ? 's' : ''} manuellement',
+              ),
+            ],
+            if (detections.isEmpty && manualBallCount == 0) ...[
               const SizedBox(height: 12),
               const Text('Aucun objet détecté avec le seuil actuel.'),
             ] else ...[

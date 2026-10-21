@@ -12,6 +12,8 @@ class DetectionPainter extends CustomPainter {
     required this.jackPosition,
     required this.jackConfirmed,
     required this.ballRanks,
+    required this.manualBalls,
+    required this.manualBallRanks,
   });
 
   final List<PetanqueDetection> detections;
@@ -21,6 +23,8 @@ class DetectionPainter extends CustomPainter {
   final Offset? jackPosition;
   final bool jackConfirmed;
   final Map<int, int> ballRanks;
+  final List<Offset> manualBalls;
+  final Map<int, int> manualBallRanks;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -51,6 +55,15 @@ class DetectionPainter extends CustomPainter {
       if (rank != null) {
         _drawRankBadge(canvas, size, rect, rank, color);
       }
+    }
+
+    for (final entry in manualBalls.asMap().entries) {
+      final point = Offset(
+        entry.value.dx * size.width,
+        entry.value.dy * size.height,
+      );
+      final rank = manualBallRanks[entry.key];
+      _drawManualBall(canvas, size, point, rank);
     }
 
     final jack = jackPosition;
@@ -104,6 +117,30 @@ class DetectionPainter extends CustomPainter {
         badgeCenter.dy - textPainter.height / 2,
       ),
     );
+  }
+
+
+  void _drawManualBall(Canvas canvas, Size size, Offset point, int? rank) {
+    final color = rank == null ? Colors.cyan.shade700 : _rankColor(rank);
+    const radius = 16.0;
+
+    canvas.drawCircle(
+      point,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = color,
+    );
+    canvas.drawCircle(
+      point,
+      3,
+      Paint()..color = Colors.white,
+    );
+
+    if (rank == null) return;
+    final rect = Rect.fromCircle(center: point, radius: radius);
+    _drawRankBadge(canvas, size, rect, rank, color);
   }
 
   void _drawJackMarker(Canvas canvas, Offset point) {
@@ -163,6 +200,8 @@ class DetectionPainter extends CustomPainter {
         !setEquals(oldDelegate.hiddenIndices, hiddenIndices) ||
         oldDelegate.jackPosition != jackPosition ||
         oldDelegate.jackConfirmed != jackConfirmed ||
-        !mapEquals(oldDelegate.ballRanks, ballRanks);
+        !mapEquals(oldDelegate.ballRanks, ballRanks) ||
+        !listEquals(oldDelegate.manualBalls, manualBalls) ||
+        !mapEquals(oldDelegate.manualBallRanks, manualBallRanks);
   }
 }

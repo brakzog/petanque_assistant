@@ -15,6 +15,7 @@ class BallRanker {
 
   List<RankedBall> rank({
     required List<PetanqueDetection> detections,
+    required List<Offset> manualBalls,
     required Offset jack,
     required Set<int> excludedIndices,
     required bool guidedCapture,
@@ -28,11 +29,24 @@ class BallRanker {
       if (excludedIndices.contains(entry.key)) continue;
 
       ranked.add(
-        RankedBall(
+        RankedBall.detected(
           detectionIndex: entry.key,
           distance: guidedCapture
-              ? _guidedDistance(detection, jack, imageAspectRatio)
+              ? _guidedDistance(detection.center, jack, imageAspectRatio)
               : _estimatedDistance(detection, jack),
+        ),
+      );
+    }
+
+    for (final entry in manualBalls.asMap().entries) {
+      ranked.add(
+        RankedBall.manual(
+          manualBallIndex: entry.key,
+          // A manually added boule has no detector bbox/diameter. The guided
+          // camera is the normal path and provides the most reliable geometry.
+          // For gallery corrections we deliberately fall back to image-plane
+          // geometry rather than inventing an apparent diameter.
+          distance: _guidedDistance(entry.value, jack, imageAspectRatio),
         ),
       );
     }
@@ -49,17 +63,13 @@ class BallRanker {
     return (second - first).abs() / first < closeResultThreshold;
   }
 
-  /// La caméra guidée n'autorise la prise que téléphone quasi parallèle au
-  /// terrain : le plan image est alors quasi parallèle au sol, et une distance
-  /// 2D corrigée du ratio de l'image conserve l'ordre des distances réelles.
   double _guidedDistance(
-    PetanqueDetection detection,
+    Offset point,
     Offset jack,
     double imageAspectRatio,
   ) {
-    final center = detection.center;
-    final dx = (center.dx.clamp(0.0, 1.0) - jack.dx) * imageAspectRatio;
-    final dy = center.dy.clamp(0.0, 1.0) - jack.dy;
+    final dx = (point.dx.clamp(0.0, 1.0) - jack.dx) * imageAspectRatio;
+    final dy = point.dy.clamp(0.0, 1.0) - jack.dy;
     return math.sqrt(dx * dx + dy * dy);
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/media/media_providers.dart';
+import '../domain/analysis_correction.dart';
 import '../terrain_analysis_providers.dart';
 import 'terrain_analysis_state.dart';
 
@@ -50,6 +51,11 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
       jackBallIndex: ref
           .read(detectionLocatorProvider)
           .findBallAtJack(state.detections, jack),
+      addingManualBall: false,
+      corrections: [
+        ...state.corrections,
+        JackPositionCorrection(jack),
+      ],
       ranking: const [],
     );
   }
@@ -67,7 +73,11 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
   }
 
   void repositionJack() {
-    state = state.copyWith(jackConfirmed: false, ranking: const []);
+    state = state.copyWith(
+      jackConfirmed: false,
+      addingManualBall: false,
+      ranking: const [],
+    );
   }
 
   /// Visible boule detection under a tap on the photo.
@@ -84,12 +94,60 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
   void ignoreBall(int detectionIndex) {
     state = state.copyWith(
       ignoredIndices: {...state.ignoredIndices, detectionIndex},
+      corrections: [
+        ...state.corrections,
+        RemovedDetectionCorrection(detectionIndex),
+      ],
+    );
+    _updateRanking();
+  }
+
+  void startAddingManualBall() {
+    if (!state.jackConfirmed) return;
+    state = state.copyWith(addingManualBall: true);
+  }
+
+  void cancelAddingManualBall() {
+    state = state.copyWith(addingManualBall: false);
+  }
+
+  void addManualBall(Offset position) {
+    if (!state.jackConfirmed) return;
+    final ball = Offset(
+      position.dx.clamp(0.0, 1.0),
+      position.dy.clamp(0.0, 1.0),
+    );
+    state = state.copyWith(
+      manualBalls: [...state.manualBalls, ball],
+      addingManualBall: false,
+      corrections: [...state.corrections, AddedBallCorrection(ball)],
+    );
+    _updateRanking();
+  }
+
+  void undoLastManualBall() {
+    if (state.manualBalls.isEmpty) return;
+    final removed = state.manualBalls.last;
+    state = state.copyWith(
+      manualBalls: state.manualBalls.sublist(0, state.manualBalls.length - 1),
+      corrections: [
+        ...state.corrections,
+        RemovedManualBallCorrection(removed),
+      ],
     );
     _updateRanking();
   }
 
   void restoreIgnoredBalls() {
-    state = state.copyWith(ignoredIndices: const {});
+    if (state.ignoredIndices.isEmpty) return;
+    final restored = Set<int>.from(state.ignoredIndices);
+    state = state.copyWith(
+      ignoredIndices: const {},
+      corrections: [
+        ...state.corrections,
+        RestoredDetectionsCorrection(restored),
+      ],
+    );
     _updateRanking();
   }
 
@@ -163,6 +221,7 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
           .read(ballRankerProvider)
           .rank(
             detections: state.detections,
+            manualBalls: state.manualBalls,
             jack: jack,
             excludedIndices: state.hiddenIndices,
             guidedCapture: state.guidedCapture,

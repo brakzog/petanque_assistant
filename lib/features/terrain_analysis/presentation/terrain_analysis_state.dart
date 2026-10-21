@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:image_picker/image_picker.dart';
 
+import '../domain/analysis_correction.dart';
 import '../domain/ranked_ball.dart';
 import '../services/petanque_detector.dart';
 
@@ -23,6 +24,9 @@ class TerrainAnalysisState {
     this.jackWasDetected = false,
     this.jackBallIndex,
     this.ignoredIndices = const {},
+    this.manualBalls = const [],
+    this.addingManualBall = false,
+    this.corrections = const [],
     this.ranking = const [],
   });
 
@@ -49,6 +53,16 @@ class TerrainAnalysisState {
   /// Boule detections the user flagged as false positives.
   final Set<int> ignoredIndices;
 
+  /// Boules explicitly added by the user, in normalized image coordinates.
+  final List<Offset> manualBalls;
+
+  /// While true, the next tap on the photo adds a missing boule.
+  final bool addingManualBall;
+
+  /// Structured feedback kept independently from the UI so it can later be
+  /// persisted/exported as training data.
+  final List<AnalysisCorrection> corrections;
+
   final List<RankedBall> ranking;
 
   bool get isBusy => pickingImage || analyzing;
@@ -61,8 +75,19 @@ class TerrainAnalysisState {
 
   /// detectionIndex -> rank (1 = closest to the jack).
   Map<int, int> get ballRanks => {
-    for (var i = 0; i < ranking.length; i++) ranking[i].detectionIndex: i + 1,
+    for (var i = 0; i < ranking.length; i++)
+      if (ranking[i].detectionIndex case final detectionIndex?)
+        detectionIndex: i + 1,
   };
+
+  /// manualBallIndex -> rank.
+  Map<int, int> get manualBallRanks => {
+    for (var i = 0; i < ranking.length; i++)
+      if (ranking[i].manualBallIndex case final manualBallIndex?)
+        manualBallIndex: i + 1,
+  };
+
+  int get rankedBallCount => ranking.length;
 
   TerrainAnalysisState copyWith({
     bool? pickingImage,
@@ -74,6 +99,9 @@ class TerrainAnalysisState {
     bool? jackWasDetected,
     Object? jackBallIndex = _unset,
     Set<int>? ignoredIndices,
+    List<Offset>? manualBalls,
+    bool? addingManualBall,
+    List<AnalysisCorrection>? corrections,
     List<RankedBall>? ranking,
   }) {
     return TerrainAnalysisState(
@@ -94,6 +122,9 @@ class TerrainAnalysisState {
           ? this.jackBallIndex
           : jackBallIndex as int?,
       ignoredIndices: ignoredIndices ?? this.ignoredIndices,
+      manualBalls: manualBalls ?? this.manualBalls,
+      addingManualBall: addingManualBall ?? this.addingManualBall,
+      corrections: corrections ?? this.corrections,
       ranking: ranking ?? this.ranking,
     );
   }

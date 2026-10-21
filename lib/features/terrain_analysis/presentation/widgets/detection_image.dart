@@ -17,6 +17,8 @@ class DetectionImage extends StatelessWidget {
     required this.jackPosition,
     required this.jackConfirmed,
     required this.ballRanks,
+    required this.manualBalls,
+    required this.manualBallRanks,
     required this.onTap,
   });
 
@@ -27,6 +29,8 @@ class DetectionImage extends StatelessWidget {
   final Offset? jackPosition;
   final bool jackConfirmed;
   final Map<int, int> ballRanks;
+  final List<Offset> manualBalls;
+  final Map<int, int> manualBallRanks;
   final ValueChanged<Offset> onTap;
 
   @override
@@ -76,6 +80,8 @@ class DetectionImage extends StatelessWidget {
                               jackPosition: jackPosition,
                               jackConfirmed: jackConfirmed,
                               ballRanks: ballRanks,
+                              manualBalls: manualBalls,
+                              manualBallRanks: manualBallRanks,
                             ),
                           ),
                         ),

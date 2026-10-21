@@ -12,6 +12,7 @@ import 'widgets/capture_mode_card.dart';
 import 'widgets/detection_image.dart';
 import 'widgets/ignore_detection_sheet.dart';
 import 'widgets/jack_validation_card.dart';
+import 'widgets/manual_ball_controls.dart';
 import 'widgets/ranking_summary_card.dart';
 import 'widgets/restore_ignored_button.dart';
 import 'widgets/warning_card.dart';
@@ -94,6 +95,8 @@ class TerrainAnalysisScreen extends ConsumerWidget {
         jackPosition: state.jackPosition,
         jackConfirmed: state.jackConfirmed,
         ballRanks: ballRanks,
+        manualBalls: state.manualBalls,
+        manualBallRanks: state.manualBallRanks,
         onTap: (position) => _onImageTap(context, state, controller, position),
       ),
       const SizedBox(height: 8),
@@ -103,7 +106,9 @@ class TerrainAnalysisScreen extends ConsumerWidget {
       ),
       const SizedBox(height: 8),
       Text(
-        state.jackConfirmed
+        state.addingManualBall
+            ? 'Mode ajout • Touchez le centre de la boule manquante'
+            : state.jackConfirmed
             ? 'Pincez pour zoomer • Touchez une fausse boule pour l’ignorer'
             : 'Pincez pour zoomer • Touchez le vrai cochonnet pour corriger sa position',
         textAlign: TextAlign.center,
@@ -125,9 +130,19 @@ class TerrainAnalysisScreen extends ConsumerWidget {
         onConfirm: controller.confirmJack,
         onReposition: controller.repositionJack,
       ),
-      if (state.jackConfirmed && ballRanks.isNotEmpty) ...[
+      if (state.jackConfirmed) ...[
         const SizedBox(height: 12),
-        RankingSummaryCard(rankedCount: ballRanks.length),
+        ManualBallControls(
+          adding: state.addingManualBall,
+          manualBallCount: state.manualBalls.length,
+          onStartAdding: controller.startAddingManualBall,
+          onCancelAdding: controller.cancelAddingManualBall,
+          onUndoLast: controller.undoLastManualBall,
+        ),
+      ],
+      if (state.jackConfirmed && state.rankedBallCount > 0) ...[
+        const SizedBox(height: 12),
+        RankingSummaryCard(rankedCount: state.rankedBallCount),
         if (closeResult) ...[
           const SizedBox(height: 12),
           const WarningCard(
@@ -178,6 +193,7 @@ class TerrainAnalysisScreen extends ConsumerWidget {
         jackBallIndex: state.jackBallIndex,
         ignoredIndices: state.ignoredIndices,
         ballRanks: ballRanks,
+        manualBallCount: state.manualBalls.length,
       ),
     ];
   }
@@ -193,8 +209,8 @@ class TerrainAnalysisScreen extends ConsumerWidget {
     await controller.useCapturedPhoto(result.image, result.tiltDegrees);
   }
 
-  /// Before the jack is confirmed a tap moves it; afterwards a tap on a boule
-  /// offers to ignore it as a false positive.
+  /// Before confirmation a tap moves the jack. Afterwards, add mode creates a
+  /// manual boule; otherwise tapping a detected boule can ignore it.
   Future<void> _onImageTap(
     BuildContext context,
     TerrainAnalysisState state,
@@ -203,6 +219,11 @@ class TerrainAnalysisScreen extends ConsumerWidget {
   ) async {
     if (!state.jackConfirmed) {
       controller.setJack(position);
+      return;
+    }
+
+    if (state.addingManualBall) {
+      controller.addManualBall(position);
       return;
     }
 
