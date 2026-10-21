@@ -115,12 +115,19 @@ class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
     try {
       final image = await camera.controller.takePicture();
       if (!mounted) return;
-      final rotation = switch (camera.controller.value.deviceOrientation) {
-        DeviceOrientation.portraitUp => CaptureRotation.portraitUp,
-        DeviceOrientation.landscapeLeft => CaptureRotation.landscapeLeft,
-        DeviceOrientation.portraitDown => CaptureRotation.portraitDown,
-        DeviceOrientation.landscapeRight => CaptureRotation.landscapeRight,
-      };
+      final deviceOrientation = camera.controller.value.deviceOrientation;
+
+      final CaptureRotation rotation;
+
+      if (deviceOrientation == DeviceOrientation.landscapeLeft) {
+        rotation = CaptureRotation.landscapeLeft;
+      } else if (deviceOrientation == DeviceOrientation.portraitDown) {
+        rotation = CaptureRotation.portraitDown;
+      } else if (deviceOrientation == DeviceOrientation.landscapeRight) {
+        rotation = CaptureRotation.landscapeRight;
+      } else {
+        rotation = CaptureRotation.portraitUp;
+      }
       Navigator.of(context).pop(
         PetanqueCameraResult(
           image: image,
