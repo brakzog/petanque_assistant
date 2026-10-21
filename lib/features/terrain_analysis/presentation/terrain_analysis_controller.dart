@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/media/media_providers.dart';
 import '../domain/analysis_correction.dart';
+import '../domain/capture_rotation.dart';
 import '../domain/ranked_ball.dart';
 import '../domain/ranked_ball_reference.dart';
 import '../domain/tilt_sample.dart';
@@ -22,12 +23,19 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
   @override
   TerrainAnalysisState build() => const TerrainAnalysisState();
 
-  Future<void> useCapturedPhoto(XFile photo, TiltSample orientation) {
+  Future<void> useCapturedPhoto(
+    XFile photo,
+    TiltSample orientation,
+    CaptureRotation captureRotation,
+    double zoomLevel,
+  ) {
     return _loadPhoto(
       () async => photo,
       guidedCapture: true,
       tiltDegrees: orientation.tiltDegrees,
       orientation: orientation,
+      captureRotation: captureRotation,
+      captureZoomLevel: zoomLevel,
     );
   }
 
@@ -295,6 +303,8 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
     required bool guidedCapture,
     double? tiltDegrees,
     TiltSample? orientation,
+    CaptureRotation? captureRotation,
+    double? captureZoomLevel,
   }) async {
     if (state.isBusy) return;
     state = state.copyWith(pickingImage: true, error: null);
@@ -314,6 +324,8 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
         guidedCapture: guidedCapture,
         tiltDegrees: tiltDegrees,
         orientation: orientation,
+        captureRotation: captureRotation,
+        captureZoomLevel: captureZoomLevel,
         pickingImage: true,
       );
       await _analyze(normalized.file);

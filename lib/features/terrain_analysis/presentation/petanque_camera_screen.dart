@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/capture_rotation.dart';
 import '../domain/tilt_sample.dart';
 import '../services/back_camera_opener.dart';
 import '../terrain_analysis_providers.dart';
@@ -114,9 +115,20 @@ class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
     try {
       final image = await camera.controller.takePicture();
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pop(PetanqueCameraResult(image: image, orientation: orientation));
+      final rotation = switch (camera.controller.value.deviceOrientation) {
+        DeviceOrientation.portraitUp => CaptureRotation.portraitUp,
+        DeviceOrientation.landscapeLeft => CaptureRotation.landscapeLeft,
+        DeviceOrientation.portraitDown => CaptureRotation.portraitDown,
+        DeviceOrientation.landscapeRight => CaptureRotation.landscapeRight,
+      };
+      Navigator.of(context).pop(
+        PetanqueCameraResult(
+          image: image,
+          orientation: orientation,
+          captureRotation: rotation,
+          zoomLevel: _zoomLevel,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {

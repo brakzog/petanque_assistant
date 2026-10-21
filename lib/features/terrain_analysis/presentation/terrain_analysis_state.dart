@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:image_picker/image_picker.dart';
 
 import '../domain/analysis_correction.dart';
+import '../domain/capture_rotation.dart';
 import '../domain/ranked_ball.dart';
 import '../domain/ranked_ball_reference.dart';
 import '../domain/tilt_sample.dart';
@@ -18,6 +19,8 @@ class TerrainAnalysisState {
     this.guidedCapture = false,
     this.tiltDegrees,
     this.orientation,
+    this.captureRotation,
+    this.captureZoomLevel,
     this.pickingImage = false,
     this.analyzing = false,
     this.error,
@@ -46,6 +49,12 @@ class TerrainAnalysisState {
   /// Full normalized gravity vector at shutter time for future perspective
   /// correction. Null for gallery photos.
   final TiltSample? orientation;
+
+  /// Device rotation and optical zoom at shutter time. Both are required to
+  /// map gravity into baked image coordinates and later apply perspective
+  /// correction safely. Null for gallery photos.
+  final CaptureRotation? captureRotation;
+  final double? captureZoomLevel;
 
   final bool pickingImage;
   final bool analyzing;
@@ -128,6 +137,8 @@ class TerrainAnalysisState {
       guidedCapture: guidedCapture,
       tiltDegrees: tiltDegrees,
       orientation: orientation,
+      captureRotation: captureRotation,
+      captureZoomLevel: captureZoomLevel,
       pickingImage: pickingImage ?? this.pickingImage,
       analyzing: analyzing ?? this.analyzing,
       error: identical(error, _unset) ? this.error : error as String?,
