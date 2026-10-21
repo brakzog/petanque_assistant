@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/tilt_sample.dart';
 import '../services/back_camera_opener.dart';
 import '../terrain_analysis_providers.dart';
 import 'petanque_camera_result.dart';
@@ -26,8 +27,10 @@ class PetanqueCameraScreen extends ConsumerStatefulWidget {
 class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
     with WidgetsBindingObserver {
   OpenedCamera? _camera;
-  StreamSubscription<double>? _tiltSubscription;
-  double? _tiltDegrees;
+  StreamSubscription<TiltSample>? _tiltSubscription;
+  TiltSample? _tiltSample;
+
+  double? get _tiltDegrees => _tiltSample?.tiltDegrees;
 
   double _zoomLevel = 1.0;
   double _zoomLevelOnScaleStart = 1.0;
@@ -47,10 +50,8 @@ class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _tiltSubscription = ref.read(tiltSensorProvider).tiltDegrees().listen((
-      tilt,
-    ) {
-      if (mounted) setState(() => _tiltDegrees = tilt);
+    _tiltSubscription = ref.read(tiltSensorProvider).samples().listen((sample) {
+      if (mounted) setState(() => _tiltSample = sample);
     });
     _openCamera();
   }
@@ -106,8 +107,8 @@ class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
 
   Future<void> _takePicture() async {
     final camera = _camera;
-    final tilt = _tiltDegrees;
-    if (!_canShoot || camera == null || tilt == null) return;
+    final orientation = _tiltSample;
+    if (!_canShoot || camera == null || orientation == null) return;
 
     setState(() => _takingPicture = true);
     try {
@@ -115,7 +116,7 @@ class _PetanqueCameraScreenState extends ConsumerState<PetanqueCameraScreen>
       if (!mounted) return;
       Navigator.of(
         context,
-      ).pop(PetanqueCameraResult(image: image, tiltDegrees: tilt));
+      ).pop(PetanqueCameraResult(image: image, orientation: orientation));
     } catch (e) {
       if (!mounted) return;
       setState(() {

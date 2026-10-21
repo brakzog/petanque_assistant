@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../domain/analysis_correction.dart';
 import '../domain/ranked_ball.dart';
 import '../domain/ranked_ball_reference.dart';
+import '../domain/tilt_sample.dart';
 import '../services/petanque_detector.dart';
 
 const Object _unset = Object();
@@ -16,6 +17,7 @@ class TerrainAnalysisState {
     this.imageAspectRatio = 1.0,
     this.guidedCapture = false,
     this.tiltDegrees,
+    this.orientation,
     this.pickingImage = false,
     this.analyzing = false,
     this.error,
@@ -40,6 +42,10 @@ class TerrainAnalysisState {
   /// True when the photo comes from the guided camera (known tilt).
   final bool guidedCapture;
   final double? tiltDegrees;
+
+  /// Full normalized gravity vector at shutter time for future perspective
+  /// correction. Null for gallery photos.
+  final TiltSample? orientation;
 
   final bool pickingImage;
   final bool analyzing;
@@ -121,6 +127,7 @@ class TerrainAnalysisState {
       imageAspectRatio: imageAspectRatio,
       guidedCapture: guidedCapture,
       tiltDegrees: tiltDegrees,
+      orientation: orientation,
       pickingImage: pickingImage ?? this.pickingImage,
       analyzing: analyzing ?? this.analyzing,
       error: identical(error, _unset) ? this.error : error as String?,

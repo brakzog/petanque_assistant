@@ -220,7 +220,7 @@ class TerrainAnalysisScreen extends ConsumerWidget {
       MaterialPageRoute(builder: (_) => const PetanqueCameraScreen()),
     );
     if (!context.mounted || result == null) return;
-    await controller.useCapturedPhoto(result.image, result.tiltDegrees);
+    await controller.useCapturedPhoto(result.image, result.orientation);
   }
 
   /// Before confirmation a tap moves the jack. Afterwards, add mode creates a

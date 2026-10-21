@@ -7,6 +7,7 @@ import '../../../core/media/media_providers.dart';
 import '../domain/analysis_correction.dart';
 import '../domain/ranked_ball.dart';
 import '../domain/ranked_ball_reference.dart';
+import '../domain/tilt_sample.dart';
 import '../terrain_analysis_providers.dart';
 import 'terrain_analysis_state.dart';
 
@@ -21,11 +22,12 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
   @override
   TerrainAnalysisState build() => const TerrainAnalysisState();
 
-  Future<void> useCapturedPhoto(XFile photo, double tiltDegrees) {
+  Future<void> useCapturedPhoto(XFile photo, TiltSample orientation) {
     return _loadPhoto(
       () async => photo,
       guidedCapture: true,
-      tiltDegrees: tiltDegrees,
+      tiltDegrees: orientation.tiltDegrees,
+      orientation: orientation,
     );
   }
 
@@ -292,6 +294,7 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
     Future<XFile?> Function() source, {
     required bool guidedCapture,
     double? tiltDegrees,
+    TiltSample? orientation,
   }) async {
     if (state.isBusy) return;
     state = state.copyWith(pickingImage: true, error: null);
@@ -310,6 +313,7 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
         imageAspectRatio: normalized.aspectRatio,
         guidedCapture: guidedCapture,
         tiltDegrees: tiltDegrees,
+        orientation: orientation,
         pickingImage: true,
       );
       await _analyze(normalized.file);
