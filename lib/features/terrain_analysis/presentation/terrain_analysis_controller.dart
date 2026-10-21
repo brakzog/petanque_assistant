@@ -369,8 +369,35 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
       return;
     }
 
-    state = state.copyWith(
-      ranking: ref
+    final perspectiveRanker = ref.read(
+      perspectiveCorrectedBallRankerProvider,
+    );
+
+    final canUsePerspective = state.guidedCapture &&
+        perspectiveRanker.canRank(
+          orientation: state.orientation,
+          rotation: state.captureRotation,
+          zoomLevel: state.captureZoomLevel,
+          imageAspectRatio: state.imageAspectRatio,
+        );
+
+    var ranking = canUsePerspective
+        ? perspectiveRanker.rank(
+            detections: state.detections,
+            manualBalls: state.manualBalls,
+            jack: jack,
+            excludedIndices: state.hiddenIndices,
+            imageAspectRatio: state.imageAspectRatio,
+            orientation: state.orientation!,
+            rotation: state.captureRotation!,
+            zoomLevel: state.captureZoomLevel!,
+          )
+        : const <RankedBall>[];
+
+    // Safety fallback: malformed pose metadata must never make a previously
+    // usable analysis lose its ranking.
+    if (!canUsePerspective || ranking.isEmpty) {
+      ranking = ref
           .read(ballRankerProvider)
           .rank(
             detections: state.detections,
@@ -379,7 +406,11 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
             excludedIndices: state.hiddenIndices,
             guidedCapture: state.guidedCapture,
             imageAspectRatio: state.imageAspectRatio,
-          ),
+          );
+    }
+
+    state = state.copyWith(
+      ranking: ranking,
       correctingRanking: false,
       rankingCorrectionOriginal: const [],
       rankingCorrectionSelection: const [],

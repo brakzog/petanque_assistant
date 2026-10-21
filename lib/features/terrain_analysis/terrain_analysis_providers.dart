@@ -5,6 +5,7 @@ import 'data/image_orientation_normalizer.dart';
 import 'domain/ball_ranker.dart';
 import 'domain/detection_locator.dart';
 import 'domain/framing_checker.dart';
+import 'domain/perspective_corrected_ball_ranker.dart';
 import 'domain/tilt_policy.dart';
 import 'services/back_camera_opener.dart';
 import 'services/ball_detector.dart';
@@ -22,6 +23,11 @@ final imageOrientationNormalizerProvider = Provider<ImageOrientationNormalizer>(
 );
 
 final ballRankerProvider = Provider<BallRanker>((ref) => const BallRanker());
+
+final perspectiveCorrectedBallRankerProvider =
+    Provider<PerspectiveCorrectedBallRanker>(
+      (ref) => const PerspectiveCorrectedBallRanker(),
+    );
 
 final detectionLocatorProvider = Provider<DetectionLocator>(
   (ref) => const DetectionLocator(),
