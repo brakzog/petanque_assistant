@@ -23,6 +23,12 @@ class BallRanker {
   }) {
     final ranked = <RankedBall>[];
 
+    // A manually added boule has no detector bbox/diameter. As soon as the
+    // user corrects the set of boules, every candidate must therefore use
+    // the same distance space; otherwise detector distances (normalised by
+    // apparent diameter) and manual distances are not comparable.
+    final usePointGeometry = guidedCapture || manualBalls.isNotEmpty;
+
     for (final entry in detections.asMap().entries) {
       final detection = entry.value;
       if (!detection.isBoule) continue;
@@ -31,7 +37,7 @@ class BallRanker {
       ranked.add(
         RankedBall.detected(
           detectionIndex: entry.key,
-          distance: guidedCapture
+          distance: usePointGeometry
               ? _guidedDistance(detection.center, jack, imageAspectRatio)
               : _estimatedDistance(detection, jack),
         ),
@@ -42,10 +48,6 @@ class BallRanker {
       ranked.add(
         RankedBall.manual(
           manualBallIndex: entry.key,
-          // A manually added boule has no detector bbox/diameter. The guided
-          // camera is the normal path and provides the most reliable geometry.
-          // For gallery corrections we deliberately fall back to image-plane
-          // geometry rather than inventing an apparent diameter.
           distance: _guidedDistance(entry.value, jack, imageAspectRatio),
         ),
       );
