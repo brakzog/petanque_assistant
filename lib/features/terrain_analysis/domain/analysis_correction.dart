@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'ranked_ball_reference.dart';
+
 /// User feedback produced while reviewing an analysis.
 ///
 /// Keeping corrections as domain data makes them persistable/exportable later
@@ -36,4 +38,18 @@ final class RestoredDetectionsCorrection extends AnalysisCorrection {
   const RestoredDetectionsCorrection(this.detectionIndices);
 
   final Set<int> detectionIndices;
+}
+
+/// Human correction of the geometric ranking.
+///
+/// [automaticOrder] is the order produced by the ranker before correction and
+/// [correctedOrder] is the final order confirmed by the user.
+final class RankingCorrection extends AnalysisCorrection {
+  const RankingCorrection({
+    required this.automaticOrder,
+    required this.correctedOrder,
+  });
+
+  final List<RankedBallReference> automaticOrder;
+  final List<RankedBallReference> correctedOrder;
 }

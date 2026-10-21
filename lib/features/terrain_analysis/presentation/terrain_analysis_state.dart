@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../domain/analysis_correction.dart';
 import '../domain/ranked_ball.dart';
+import '../domain/ranked_ball_reference.dart';
 import '../services/petanque_detector.dart';
 
 const Object _unset = Object();
@@ -28,6 +29,9 @@ class TerrainAnalysisState {
     this.addingManualBall = false,
     this.corrections = const [],
     this.ranking = const [],
+    this.correctingRanking = false,
+    this.rankingCorrectionOriginal = const [],
+    this.rankingCorrectionSelection = const [],
   });
 
   final XFile? image;
@@ -64,6 +68,11 @@ class TerrainAnalysisState {
   final List<AnalysisCorrection> corrections;
 
   final List<RankedBall> ranking;
+
+  /// Human ranking correction currently being edited.
+  final bool correctingRanking;
+  final List<RankedBall> rankingCorrectionOriginal;
+  final List<RankedBallReference> rankingCorrectionSelection;
 
   bool get isBusy => pickingImage || analyzing;
 
@@ -103,6 +112,9 @@ class TerrainAnalysisState {
     bool? addingManualBall,
     List<AnalysisCorrection>? corrections,
     List<RankedBall>? ranking,
+    bool? correctingRanking,
+    List<RankedBall>? rankingCorrectionOriginal,
+    List<RankedBallReference>? rankingCorrectionSelection,
   }) {
     return TerrainAnalysisState(
       image: image,
@@ -126,6 +138,11 @@ class TerrainAnalysisState {
       addingManualBall: addingManualBall ?? this.addingManualBall,
       corrections: corrections ?? this.corrections,
       ranking: ranking ?? this.ranking,
+      correctingRanking: correctingRanking ?? this.correctingRanking,
+      rankingCorrectionOriginal:
+          rankingCorrectionOriginal ?? this.rankingCorrectionOriginal,
+      rankingCorrectionSelection:
+          rankingCorrectionSelection ?? this.rankingCorrectionSelection,
     );
   }
 }

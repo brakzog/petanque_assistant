@@ -14,6 +14,7 @@ import 'widgets/ignore_detection_sheet.dart';
 import 'widgets/jack_validation_card.dart';
 import 'widgets/manual_ball_controls.dart';
 import 'widgets/ranking_summary_card.dart';
+import 'widgets/ranking_correction_controls.dart';
 import 'widgets/restore_ignored_button.dart';
 import 'widgets/warning_card.dart';
 
@@ -109,6 +110,17 @@ class TerrainAnalysisScreen extends ConsumerWidget {
           onUndoLast: controller.undoLastManualBall,
         ),
       ],
+      if (state.jackConfirmed && state.rankedBallCount > 1) ...[
+        const SizedBox(height: 8),
+        RankingCorrectionControls(
+          active: state.correctingRanking,
+          selectedCount: state.rankingCorrectionSelection.length,
+          onStart: controller.startRankingCorrection,
+          onUndo: controller.undoRankingChoice,
+          onCancel: controller.cancelRankingCorrection,
+          onConfirm: controller.confirmRankingCorrection,
+        ),
+      ],
       const SizedBox(height: 8),
       CaptureModeCard(
         guidedCapture: state.guidedCapture,
@@ -118,6 +130,8 @@ class TerrainAnalysisScreen extends ConsumerWidget {
       Text(
         state.addingManualBall
             ? 'Mode ajout • Touchez le centre de la boule manquante'
+            : state.correctingRanking
+            ? 'Classement manuel • Touchez la vraie n°1, puis la n°2, puis la n°3…'
             : state.jackConfirmed
             ? 'Pincez pour zoomer • Touchez une fausse boule pour l’ignorer'
             : 'Pincez pour zoomer • Touchez le vrai cochonnet pour corriger sa position',
@@ -224,6 +238,12 @@ class TerrainAnalysisScreen extends ConsumerWidget {
 
     if (state.addingManualBall) {
       controller.addManualBall(position);
+      return;
+    }
+
+    if (state.correctingRanking) {
+      final ball = controller.rankedBallAt(position);
+      if (ball != null) controller.selectRankingBall(ball);
       return;
     }
 

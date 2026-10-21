@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/media/media_providers.dart';
 import '../domain/analysis_correction.dart';
+import '../domain/ranked_ball.dart';
+import '../domain/ranked_ball_reference.dart';
 import '../terrain_analysis_providers.dart';
 import 'terrain_analysis_state.dart';
 
@@ -77,6 +79,9 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
       jackConfirmed: false,
       addingManualBall: false,
       ranking: const [],
+      correctingRanking: false,
+      rankingCorrectionOriginal: const [],
+      rankingCorrectionSelection: const [],
     );
   }
 
@@ -104,6 +109,7 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
 
   void startAddingManualBall() {
     if (!state.jackConfirmed) return;
+    if (state.correctingRanking) cancelRankingCorrection();
     state = state.copyWith(addingManualBall: true);
   }
 
@@ -149,6 +155,137 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
       ],
     );
     _updateRanking();
+  }
+
+  void startRankingCorrection() {
+    if (!state.jackConfirmed || state.ranking.length < 2) return;
+    state = state.copyWith(
+      addingManualBall: false,
+      correctingRanking: true,
+      rankingCorrectionOriginal: List<RankedBall>.from(state.ranking),
+      rankingCorrectionSelection: const [],
+    );
+  }
+
+  void cancelRankingCorrection() {
+    if (!state.correctingRanking) return;
+    state = state.copyWith(
+      ranking: List<RankedBall>.from(state.rankingCorrectionOriginal),
+      correctingRanking: false,
+      rankingCorrectionOriginal: const [],
+      rankingCorrectionSelection: const [],
+    );
+  }
+
+  void undoRankingChoice() {
+    if (!state.correctingRanking || state.rankingCorrectionSelection.isEmpty) {
+      return;
+    }
+    final selection = state.rankingCorrectionSelection.sublist(
+      0,
+      state.rankingCorrectionSelection.length - 1,
+    );
+    _previewRankingCorrection(selection);
+  }
+
+  void confirmRankingCorrection() {
+    if (!state.correctingRanking || state.rankingCorrectionSelection.isEmpty) {
+      return;
+    }
+    final automaticOrder = state.rankingCorrectionOriginal
+        .map(_referenceFor)
+        .toList(growable: false);
+    final correctedOrder = state.ranking.map(_referenceFor).toList(growable: false);
+
+    state = state.copyWith(
+      corrections: [
+        ...state.corrections,
+        RankingCorrection(
+          automaticOrder: automaticOrder,
+          correctedOrder: correctedOrder,
+        ),
+      ],
+      correctingRanking: false,
+      rankingCorrectionOriginal: const [],
+      rankingCorrectionSelection: const [],
+    );
+  }
+
+  /// Returns the ranked boule under [position], including manually added ones.
+  RankedBallReference? rankedBallAt(Offset position) {
+    // Manual boules have no bbox, so give them a small normalized hit target.
+    var nearestManualDistance = double.infinity;
+    int? nearestManualIndex;
+    for (final entry in state.manualBalls.asMap().entries) {
+      final distance = (entry.value - position).distance;
+      if (distance <= 0.045 && distance < nearestManualDistance) {
+        nearestManualDistance = distance;
+        nearestManualIndex = entry.key;
+      }
+    }
+    if (nearestManualIndex != null) {
+      return ManualBallReference(nearestManualIndex);
+    }
+
+    final detectionIndex = ballAt(position);
+    if (detectionIndex == null) return null;
+    return DetectedBallReference(detectionIndex);
+  }
+
+  void selectRankingBall(RankedBallReference reference) {
+    if (!state.correctingRanking) return;
+    if (state.rankingCorrectionSelection.any(
+      (selected) => _sameReference(selected, reference),
+    )) {
+      return;
+    }
+
+    _previewRankingCorrection([
+      ...state.rankingCorrectionSelection,
+      reference,
+    ]);
+  }
+
+  void _previewRankingCorrection(List<RankedBallReference> selection) {
+    final original = state.rankingCorrectionOriginal;
+    final selectedBalls = <RankedBall>[];
+
+    for (final reference in selection) {
+      final ball = original.cast<RankedBall?>().firstWhere(
+        (candidate) =>
+            candidate != null && _sameReference(_referenceFor(candidate), reference),
+        orElse: () => null,
+      );
+      if (ball != null) selectedBalls.add(ball);
+    }
+
+    final remaining = original.where(
+      (ball) => !selection.any(
+        (reference) => _sameReference(_referenceFor(ball), reference),
+      ),
+    );
+
+    state = state.copyWith(
+      rankingCorrectionSelection: selection,
+      ranking: [...selectedBalls, ...remaining],
+    );
+  }
+
+  RankedBallReference _referenceFor(RankedBall ball) {
+    if (ball.detectionIndex case final detectionIndex?) {
+      return DetectedBallReference(detectionIndex);
+    }
+    return ManualBallReference(ball.manualBallIndex!);
+  }
+
+  bool _sameReference(RankedBallReference a, RankedBallReference b) {
+    return switch ((a, b)) {
+      (DetectedBallReference a, DetectedBallReference b) =>
+        a.detectionIndex == b.detectionIndex,
+      (ManualBallReference a, ManualBallReference b) =>
+        a.manualBallIndex == b.manualBallIndex,
+      _ => false,
+    };
   }
 
   Future<void> _loadPhoto(
@@ -227,6 +364,9 @@ class TerrainAnalysisController extends Notifier<TerrainAnalysisState> {
             guidedCapture: state.guidedCapture,
             imageAspectRatio: state.imageAspectRatio,
           ),
+      correctingRanking: false,
+      rankingCorrectionOriginal: const [],
+      rankingCorrectionSelection: const [],
     );
   }
 }
