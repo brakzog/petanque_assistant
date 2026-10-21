@@ -48,7 +48,7 @@ class ManualBallControls extends StatelessWidget {
               FilledButton.tonalIcon(
                 onPressed: onStartAdding,
                 icon: const Icon(Icons.add_circle_outline),
-                label: const Text('Une boule manque ?'),
+                label: const Text('Ajouter une boule manquante'),
               ),
             ],
             if (manualBallCount > 0) ...[

@@ -99,6 +99,16 @@ class TerrainAnalysisScreen extends ConsumerWidget {
         manualBallRanks: state.manualBallRanks,
         onTap: (position) => _onImageTap(context, state, controller, position),
       ),
+      if (state.jackConfirmed) ...[
+        const SizedBox(height: 8),
+        ManualBallControls(
+          adding: state.addingManualBall,
+          manualBallCount: state.manualBalls.length,
+          onStartAdding: controller.startAddingManualBall,
+          onCancelAdding: controller.cancelAddingManualBall,
+          onUndoLast: controller.undoLastManualBall,
+        ),
+      ],
       const SizedBox(height: 8),
       CaptureModeCard(
         guidedCapture: state.guidedCapture,
@@ -130,16 +140,6 @@ class TerrainAnalysisScreen extends ConsumerWidget {
         onConfirm: controller.confirmJack,
         onReposition: controller.repositionJack,
       ),
-      if (state.jackConfirmed) ...[
-        const SizedBox(height: 12),
-        ManualBallControls(
-          adding: state.addingManualBall,
-          manualBallCount: state.manualBalls.length,
-          onStartAdding: controller.startAddingManualBall,
-          onCancelAdding: controller.cancelAddingManualBall,
-          onUndoLast: controller.undoLastManualBall,
-        ),
-      ],
       if (state.jackConfirmed && state.rankedBallCount > 0) ...[
         const SizedBox(height: 12),
         RankingSummaryCard(rankedCount: state.rankedBallCount),
