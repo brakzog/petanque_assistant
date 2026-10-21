@@ -14,7 +14,9 @@ import 'widgets/shutter_button.dart';
 import 'widgets/tilt_indicator.dart';
 import 'widgets/zoom_badge.dart';
 
-export 'petanque_camera_result.dart';
+
+import 'package:flutter/services.dart';
+
 
 /// Guided capture: only allows shooting when the phone is nearly flat.
 class PetanqueCameraScreen extends ConsumerStatefulWidget {
