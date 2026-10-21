@@ -17,7 +17,7 @@ import 'widgets/ranking_summary_card.dart';
 import 'widgets/ranking_correction_controls.dart';
 import 'widgets/restore_ignored_button.dart';
 import 'widgets/warning_card.dart';
-import '../domain/petanque_camera_result.dart';
+import 'petanque_camera_result.dart';
 
 class TerrainAnalysisScreen extends ConsumerWidget {
   const TerrainAnalysisScreen({super.key});
